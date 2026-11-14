@@ -4,7 +4,7 @@
 
 **Aus langen OBS-Aufnahmen werden Folgen und Highlights. Windows schneidet, dein Docker-Server übernimmt den YouTube-Upload.**
 
-[English](README.md) · [Auf die Warteliste](https://github.com/PaddyGameTV/VODWerft/issues/new?title=Warteliste%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows-Version%3A%0AGrafikkarte%20und%20VRAM%3A%0ADocker-Host%20und%20Betriebssystem%3A%0ASpiel%20oder%20Aufnahmeart%3A)
+[English](README.md) · [Auf die Warteliste](https://github.com/PaddyZockt/VODWerft/issues/new?title=Warteliste%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows-Version%3A%0AGrafikkarte%20und%20VRAM%3A%0ADocker-Host%20und%20Betriebssystem%3A%0ASpiel%20oder%20Aufnahmeart%3A)
 
 > **0.1.0 · Lokaler Prototyp · Vorschau, noch nicht testbar.** Der Ablauf läuft auf einem Windows-PC mit Unraid-Server. Der weitergebbare Windows-Installer und das Docker-Paket sind in Arbeit und noch nicht veröffentlicht. Dieses Repository enthält derzeit nur die Dokumentation.
 
@@ -51,11 +51,11 @@ Noch gibt es nichts zum Installieren. Für die erste kleine Gruppe sammeln wir s
 
 Der erste Test ist überschaubar. Verarbeite eine kurze Aufnahme, bestätige die Übergabe im Tray und schalte den Windows-PC aus. Dann prüfe, ob dein Server den privaten Testupload beendet. Uns interessiert, wo die Einrichtung hakt und wie sich der Ablauf bei Verbindungsabbrüchen oder Neustarts verhält.
 
-[**Auf die Warteliste setzen**](https://github.com/PaddyGameTV/VODWerft/issues/new?title=Warteliste%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows-Version%3A%0AGrafikkarte%20und%20VRAM%3A%0ADocker-Host%20und%20Betriebssystem%3A%0ASpiel%20oder%20Aufnahmeart%3A) und beschreib kurz dein Setup. Issues sind öffentlich. Teile dort nur Angaben zu deiner Hard- und Software, keine Zugangsdaten, Tokens oder Pfade.
+[**Auf die Warteliste setzen**](https://github.com/PaddyZockt/VODWerft/issues/new?title=Warteliste%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows-Version%3A%0AGrafikkarte%20und%20VRAM%3A%0ADocker-Host%20und%20Betriebssystem%3A%0ASpiel%20oder%20Aufnahmeart%3A) und beschreib kurz dein Setup. Issues sind öffentlich. Teile dort nur Angaben zu deiner Hard- und Software, keine Zugangsdaten, Tokens oder Pfade.
 
 ## Mitwirkende
 
-- **PaddyGameTV** · Projektgründer und Maintainer
+- **PaddyZockt** · Projektgründer und Maintainer
 - **OpenAI Codex** · KI-Entwicklungsassistenz für Planung, Umsetzung und Dokumentation
 - **Claude (Anthropic)** · KI-Entwicklungsassistenz für Umsetzung, Wartung und Dokumentation
 - **Nilson89 (Nilson1489)** · Entwickler von [Nightcut](https://github.com/Nilson89/nightcut), der Grundlage für Analyse und Schnitt

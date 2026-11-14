@@ -4,7 +4,7 @@
 
 **Turn long OBS recordings into episodes and highlights. Cut on Windows, hand off to your own server, and let Docker handle the YouTube upload.**
 
-[Deutsch](README.de.md) · [Join the waitlist](https://github.com/PaddyGameTV/VODWerft/issues/new?title=Waitlist%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows%20version%3A%0AGPU%20and%20VRAM%3A%0ADocker%20host%20and%20OS%3A%0AGame%20or%20recording%20type%3A)
+[Deutsch](README.de.md) · [Join the waitlist](https://github.com/PaddyZockt/VODWerft/issues/new?title=Waitlist%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows%20version%3A%0AGPU%20and%20VRAM%3A%0ADocker%20host%20and%20OS%3A%0AGame%20or%20recording%20type%3A)
 
 > **0.1.0 · Local prototype · Preview, not testable yet.** The workflow is running on one Windows and Unraid setup. The distributable Windows installer and Docker package are in development and not released yet. This repository currently contains documentation only.
 
@@ -51,11 +51,11 @@ There is nothing to install yet. We are collecting interested people now so we c
 
 The first test is simple: process a short recording, confirm the handoff in the tray, shut down the Windows PC, and verify that the server finishes the private test upload. We'd like to hear where setup gets confusing and what happens when a connection drops or a machine restarts.
 
-[**Join the waitlist**](https://github.com/PaddyGameTV/VODWerft/issues/new?title=Waitlist%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows%20version%3A%0AGPU%20and%20VRAM%3A%0ADocker%20host%20and%20OS%3A%0AGame%20or%20recording%20type%3A) and tell us about your setup. Issues are public, so share hardware and software details only, never credentials, tokens or file paths.
+[**Join the waitlist**](https://github.com/PaddyZockt/VODWerft/issues/new?title=Waitlist%20%E2%80%94%20Windows%20%2B%20Docker&body=Windows%20version%3A%0AGPU%20and%20VRAM%3A%0ADocker%20host%20and%20OS%3A%0AGame%20or%20recording%20type%3A) and tell us about your setup. Issues are public, so share hardware and software details only, never credentials, tokens or file paths.
 
 ## Credits
 
-- **PaddyGameTV** · Project creator and maintainer
+- **PaddyZockt** · Project creator and maintainer
 - **OpenAI Codex** · AI development assistance for planning, implementation and documentation
 - **Claude (Anthropic)** · AI development assistance for implementation, maintenance and documentation
 - **Nilson89 (Nilson1489)** · Creator of [Nightcut](https://github.com/Nilson89/nightcut), the upstream editing engine
