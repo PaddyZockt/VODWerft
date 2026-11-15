@@ -1,0 +1,45 @@
+# VODWerft Upload-Server. Pfade stehen in der Datei .env (Vorlage: .env.example).
+# Start:       docker compose up -d
+# Aktualisieren: docker compose pull && docker compose up -d
+name: vodwerft
+services:
+  youtube-uploader:
+    image: ghcr.io/paddyzockt/vodwerft-uploader:0.1
+    # Selbst bauen statt herunterladen: die naechsten zwei Zeilen einkommentieren, "image" dabei stehen lassen
+    # build: { context: ., dockerfile: Dockerfile }
+    container_name: vodwerft-uploader
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.5
+    mem_limit: "536870912"
+    # Gesund = Monitoring-Datei ist juenger als 2 Minuten (der Worker schreibt sie alle 15 s). Startet nichts neu, zeigt nur den Zustand.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.stat('/metrics/youtube_uploader.prom').st_mtime > 120)"]
+      interval: 60s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    environment:
+      ALLOW_PUBLISH: "1"
+      SCHEDULE_ONLY: "1"
+      TZ: ${TZ:-Europe/Berlin}
+      UPLOAD_ENABLED: "1"
+      UPLOAD_NOTICES_DIR: /notices
+    volumes:
+      - ${SECRETS_DIR}:/data/secrets:ro
+      - ${NIGHTCUT_ROOT}/.upload:/data/incoming
+      - ${NIGHTCUT_ROOT}/Fertig:/data/uploaded
+      - ${NIGHTCUT_ROOT}/Pruefen:/data/failed
+      - uploader-state:/data/state
+      - ${UPLOADER_DIR}/metrics:/metrics
+      - ${NIGHTCUT_ROOT}/.status:/notices
+      # Beschreibungs-Fuss fuer alle Videos (Vorlage: config-example/description-footer.txt). Die Datei MUSS existieren.
+      - ${UPLOADER_DIR}/description-footer.txt:/opt/uploader/description-footer.txt:ro
+volumes:
+  uploader-state:
+    name: vodwerft_uploader-state

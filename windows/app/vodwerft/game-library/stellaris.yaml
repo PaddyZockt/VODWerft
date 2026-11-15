@@ -1,0 +1,20 @@
+# Spielprofil: Stellaris (Paradox, 4X-Weltraumstrategie in Echtzeit mit Pause).
+# Startpunkt - mit eigenem Material feinjustieren (vision_hints, keywords).
+name: Stellaris
+developer: Paradox Development Studio
+game_type: other
+
+keywords:
+  2.0: ["krass", "alter", "oh mein gott", "boah", "wie geil", "endlich", "was war das", "krieg", "flotte", "vernichtet", "kapituliert"]
+  1.0: ["geil", "nice", "haha", "warum", "mist", "perfekt", "nein", "schon wieder", "krise"]
+
+vision_hints: |
+  German-language Stellaris gameplay: real-time grand strategy in space that is often
+  paused. Galaxy map and system views, planet and empire management, research and tech
+  choices, trade routes, diplomacy windows, event pop-ups with illustrations, fleet
+  movement and ship-design screens are gameplay, including while the game is paused.
+  Highlights: fleet battles with lasers and explosions, a war being declared or won,
+  a first contact event, a crisis (such as an extradimensional invasion or awakened
+  empire) appearing, megastructures completing, a planet being conquered.
+  Distinguish all of these from loading screens, the new-game setup screen, long idle
+  fast-forward without decisions and AFK.

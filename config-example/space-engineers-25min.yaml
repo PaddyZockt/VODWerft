@@ -1,0 +1,14 @@
+layout:
+  gameplay: {x: 0.0, y: 0.0, w: 1.0, h: 1.0}
+  facecam: null
+audio:
+  game: null
+  party: null
+  mix: null
+letsplay:
+  strength: gentle
+  episodes: by_length
+  episode_minutes: 25
+  title_format: "{series} #{n:02d} – {title}"
+metadata:
+  enabled: true

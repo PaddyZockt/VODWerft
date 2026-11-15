@@ -1,0 +1,22 @@
+# Spielprofil: Total War: Warhammer III (Echtzeitschlachten plus rundenbasierte Kampagnenkarte).
+# Startpunkt - mit eigenem Material feinjustieren (vision_hints, keywords).
+name: Total War Warhammer III
+developer: Creative Assembly / SEGA
+game_type: other
+
+keywords:
+  3.0: ["let's go", "lets go", "oh mein gott", "alter", "boah", "jaaa", "was war das", "krass"]
+  2.0: ["geil", "wie geil", "nice", "haha", "hahaha", "sauber", "angriff", "charge", "sieg", "gewonnen", "zerschmettert", "vernichtet"]
+  1.0: ["nein", "neee", "ey", "warum", "mist", "schon wieder", "verloren", "flieht", "rückzug"]
+
+vision_hints: |
+  German-language Total War: Warhammer III gameplay with two very different modes.
+  Real-time battle: armies clashing, cavalry or monster charges, flying units, magic
+  spells and big visual effects, sieges with walls and gates, heroes and lords in
+  duels, units routing, the victory or defeat banner. These are highlights.
+  Campaign map: turn-based movement, city and province management, research, diplomacy,
+  recruiting and the end-turn screen. These are calm gameplay, not highlights.
+  Distinguish both from loading screens, battle deployment, pause menus and AFK.
+  The game is mostly calm in the campaign and loud in battles; battle climaxes
+  (first contact, a decisive charge, a siege breach, the last unit standing) are the
+  strongest cut candidates.

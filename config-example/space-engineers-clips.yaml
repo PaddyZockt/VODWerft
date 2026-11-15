@@ -1,0 +1,24 @@
+layout:
+  gameplay: {x: 0.0, y: 0.0, w: 1.0, h: 1.0}
+  facecam: null
+audio:
+  mic: {title: null, index: 0}
+  game: null
+  party: null
+  mix: null
+editor:
+  target_minutes: 12
+  max_candidates: 60
+candidates:
+  max_count: 60
+  per_hour: 8
+vision:
+  frames_per_candidate: 3
+shorts:
+  enabled: true
+  count: 3
+  font_size: 82
+  words_per_caption: 2
+  highlight_color: "#E50914"
+metadata:
+  enabled: false

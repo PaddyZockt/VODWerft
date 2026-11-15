@@ -1,0 +1,15 @@
+🔗 Meine Links
+
+🎮 *Twitch:*
+►► https://www.twitch.tv/DEIN-KANAL
+
+▶️ *YouTube:*
+►► https://www.youtube.com/@DEIN-KANAL
+
+💬 *Discord:*
+►► https://discord.gg/DEIN-EINLADUNGSLINK
+
+🛰️ Spiel
+
+*Spiel:* ${game}
+*Entwickler:* ${developer}

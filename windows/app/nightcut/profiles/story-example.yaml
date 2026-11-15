@@ -1,0 +1,18 @@
+name: Story-Beispiel
+# BEISPIEL, so sieht ein Spielprofil mit "Story-Momenten" aus. Kopiere diese Datei, nenne sie
+# nach deinem Spiel und passe alles an. Sie macht nichts, solange enabled: false steht.
+#
+# Idee: Ein lustiger Moment ist oft die Folge von etwas, das kurz vorher gesagt oder angefangen
+# wurde. Findet Nightcut vor dem Clip eine deiner Trigger-Phrasen, startet der Clip schon dort.
+keywords:
+  2.0: [krass, alter, oh mein gott]
+vision_hints: "Beschreibe hier kurz, wie das Spiel aussieht."
+story:
+  enabled: false        # true = einschalten
+  lookback_s: 45        # so viele Sekunden vor dem Clip wird nach einem Trigger gesucht
+  max_clip_s: 75        # der Clip wird dadurch nie länger als das
+  triggers:             # DEINE Wörter und Sätze, klein geschrieben, beliebig viele
+    - name: Ankündigung
+      phrases: ["pass auf", "gleich passiert", "ich wette", "das geht schief"]
+    - name: Plan
+      phrases: ["mein plan", "ich versuche jetzt", "jetzt zeige ich"]
