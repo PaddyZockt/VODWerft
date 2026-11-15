@@ -1,8 +1,10 @@
 ﻿# VODWerft – User guide
 
-VODWerft turns your game recordings into finished episodes: it cuts them, writes titles and descriptions, creates thumbnails and schedules the upload to YouTube. Processing runs on your Windows PC. Uploading runs either **directly from the PC** (simple, no server needed) or on a small **Docker server** (for round-the-clock operation).
+VODWerft turns your game recordings into finished episodes: it cuts them, writes titles and descriptions, creates thumbnails and schedules the upload to YouTube. Processing runs on your Windows PC. Uploading runs **by hand** (simplest, no Google project needed), **directly from the PC**, or on a small **Docker server** (for round-the-clock operation).
 
-> **Read first:** YouTube forces videos uploaded through the API by an **unaudited** Google project (created after 28 July 2020) to **private** until the project passes a compliance audit. See [YouTube access](#5-youtube-sign-in-and-approval).
+> **Beginners:** choose "Von Hand hochladen" (upload by hand) in the installer. You need no Google project; VODWerft prepares each episode (see [Manual upload](#manual-upload-no-youtube-project)).
+
+> **Read first (automatic upload only):** YouTube forces videos uploaded through the API by an **unaudited** Google project (created after 28 July 2020) to **private** until the project passes a compliance audit. See [YouTube access](#5-youtube-sign-in-and-approval).
 
 ## 1. Requirements
 
@@ -53,6 +55,20 @@ The `server` folder is in the package. The ready-made server image is built auto
 4. Start with `docker compose up -d`. To update: `docker compose pull && docker compose up -d`.
 
 The server reports its version to the PC; if they do not match, the tray icon warns you.
+
+## Manual upload (no YouTube project)
+
+The simplest way, with **no** sign-in and **no** Google project. VODWerft cuts, writes title and description and creates the thumbnail. You do the upload in YouTube Studio yourself, about a minute per episode. Your video is not forced to private.
+
+1. Right-click the tray icon → **Manuell hochladen**. (The entry only appears in this mode.)
+2. Pick a finished episode on the left. Only approved, finished episodes are listed.
+3. Open **YouTube Studio** and drag the video in; **Video im Ordner zeigen** finds the file.
+4. Copy the **title**, then the **description** and **tags**, and paste them into YouTube.
+5. Upload the thumbnail as the custom thumbnail (**Vorschaubild zeigen**).
+6. If a **scheduled time** is shown, set it in YouTube under Visibility → Schedule.
+7. Finally **Als hochgeladen markieren**. The episode moves to the "Fertig" folder and disappears from the list.
+
+You can switch to automatic upload later via the setup assistant (tray menu, "Einrichtung öffnen").
 
 ## 5. YouTube sign-in and approval
 

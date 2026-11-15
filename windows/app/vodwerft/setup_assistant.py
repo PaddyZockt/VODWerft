@@ -100,7 +100,7 @@ def validate(answers):
     for key in ("data_dir", "ffmpeg_directory", "ollama"):
         if not answers.get(key):
             raise ValueError(f"Angabe fehlt: {key}")
-    if answers.get("mode", "server") not in ("server", "direct"):
+    if answers.get("mode", "server") not in ("server", "direct", "manual"):
         raise ValueError("Unbekannter Upload-Modus.")
     if answers.get("mode", "server") == "server" and not answers.get("share"):
         raise ValueError("Bitte die Server-Freigabe angeben (Ordner, in dem der Upload-Server arbeitet).")
@@ -121,7 +121,8 @@ def build(answers):
     validate(answers)
     data = Path(answers["data_dir"])
     production, config_dir = data / "production", data / "config"
-    direct = answers.get("mode", "server") == "direct"
+    mode = answers.get("mode", "server")
+    direct = mode in ("direct", "manual")  # beide Modi nutzen lokale Upload-Ordner im Datenordner
     # Direkt-Modus: Der Upload laeuft auf diesem PC, die "Freigabe" ist ein lokaler Ordner im Datenordner.
     share = data / "uploader" if direct else Path(answers["share"])
     files, folders = {}, [production, config_dir]
@@ -165,11 +166,11 @@ def build(answers):
         "ffmpeg_directory": answers["ffmpeg_directory"], "ollama": answers["ollama"],
         "ollama_models": OLLAMA_MODELS, "ollama_log": str(production / "ollama.log"),
         "upload_incoming": str(share / ".upload"), "blocked_utc_slots": [],
-        "upload_gate": str(data / GATE_FILE),
+        **({} if mode == "manual" else {"upload_gate": str(data / GATE_FILE)}),  # manuell: es lädt nichts von allein hoch
         "retention_enabled": False, "pc_cleanup": "off",
     }
     if direct:
-        root["upload_mode"] = "direct"
+        root["upload_mode"] = mode
     if answers.get("title_suffix"):
         root["title_suffix"] = answers["title_suffix"]
     if extra:
@@ -255,6 +256,6 @@ def parse_presets(argv):
             i += 2
         else:
             i += 1
-    if result.get("mode") not in (None, "server", "direct"):
+    if result.get("mode") not in (None, "server", "direct", "manual"):
         del result["mode"]
     return result

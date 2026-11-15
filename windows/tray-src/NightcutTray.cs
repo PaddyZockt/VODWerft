@@ -72,6 +72,8 @@ internal static class NightcutTray
             menu.Items.Add("Einstellungen", null, delegate { StartScript("settings_window.py", Path.Combine(dataDir, "production")); });
             menu.Items.Add("Einrichtung öffnen", null, delegate { StartScript("setup_wizard.py"); });
             menu.Items.Add("Datenordner öffnen", null, delegate { OpenFolder(dataDir); });
+            if (IsManualMode())
+                menu.Items.Add("Manuell hochladen", null, delegate { StartScript("manual_upload.py", Path.Combine(dataDir, "production")); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Beenden", null, delegate
             {
@@ -124,6 +126,16 @@ internal static class NightcutTray
         }
         Process.Start(new ProcessStartInfo(python, "-X utf8 -B \"" + script + "\"" + (argument == null ? "" : " \"" + argument + "\""))
             { WorkingDirectory = Path.GetDirectoryName(script), UseShellExecute = false });
+    }
+
+    private static bool IsManualMode()
+    {
+        try
+        {
+            var config = Path.Combine(dataDir, "production", "watcher.json");
+            return File.Exists(config) && File.ReadAllText(config).Replace(" ", "").Contains("\"upload_mode\":\"manual\"");
+        }
+        catch (Exception) { return false; }
     }
 
     private static void OpenFolder(string path)

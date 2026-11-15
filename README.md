@@ -27,13 +27,14 @@ The Windows PC does the media work. Uploading runs either **directly from the PC
 - Recording profiles per game (library with examples or your own name); episode length and publishing weekdays are configurable.
 - Tray icon with status, dashboard and setup assistant.
 - **Safe defaults:** nothing is uploaded before you approve it. Every episode waits for your approval.
-- Upload to YouTube with a schedule, directly from the PC or through the Docker server.
+- **Manual upload (no Google project):** VODWerft prepares video, title, description and thumbnail and opens YouTube Studio. You drag the file in yourself.
+- Automatic upload to YouTube with a schedule, directly from the PC or through the Docker server (needs your own Google project).
 
 ## Requirements
 
 - A Windows PC (tested on Windows 11) with an **NVIDIA GPU, 16 GB VRAM** recommended, about 30 GB free disk space.
 - Internet connection: the local AI models are about **25 GB**; the download takes 30 minutes to several hours.
-- A YouTube channel and a Google account. For **uploading** you need your own Google Cloud project with YouTube access. This is the most involved part and is described step by step in the [user guide](docs/USER-GUIDE.en.md). Until then you can try everything up to the finished episode.
+- A YouTube channel. With **"Von Hand hochladen"** (upload by hand) you need nothing else. Only for **automatic upload** you need your own Google Cloud project with YouTube access. That is the most involved part and is described step by step in the [user guide](docs/USER-GUIDE.en.md).
 - *Optional:* a Docker host (Linux, Unraid, NAS) for server mode.
 - OBS with separate audio tracks for recording.
 

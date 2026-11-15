@@ -1,8 +1,10 @@
 ﻿# VODWerft – Benutzerhandbuch
 
-VODWerft verwandelt deine Spielaufnahmen automatisch in fertige Folgen: Es schneidet, vergibt Titel und Beschreibung, erstellt Vorschaubilder und lädt die Videos zeitgesteuert zu YouTube hoch. Die Verarbeitung läuft auf deinem Windows-PC. Der Upload läuft entweder **direkt vom PC** (einfach, kein Server nötig) oder über einen kleinen **Server mit Docker** (für Dauerbetrieb).
+VODWerft verwandelt deine Spielaufnahmen automatisch in fertige Folgen: Es schneidet, vergibt Titel und Beschreibung, erstellt Vorschaubilder und lädt die Videos zeitgesteuert zu YouTube hoch. Die Verarbeitung läuft auf deinem Windows-PC. Der Upload läuft **von Hand** (am einfachsten, kein Google-Projekt nötig), **direkt vom PC** oder über einen kleinen **Server mit Docker** (für Dauerbetrieb).
 
-> **Wichtig vorab:** Neue YouTube-Zugänge werden von YouTube zunächst so behandelt, dass per Programm hochgeladene Videos **privat bleiben**, bis dein Google-Projekt ein Prüfverfahren („Audit“) bestanden hat. Lies dazu den Abschnitt [YouTube-Freigabe](#5-youtube-anmeldung-und-freigabe) bevor du viel Zeit in die Einrichtung steckst.
+> **Einsteiger:** Wähle im Installer „Von Hand hochladen“. Dann brauchst du kein Google-Projekt, VODWerft bereitet jede Folge vor (siehe [Manuell hochladen](#manuell-hochladen-ohne-youtube-projekt)).
+
+> **Wichtig vorab (nur für automatischen Upload):** Neue YouTube-Zugänge werden von YouTube zunächst so behandelt, dass per Programm hochgeladene Videos **privat bleiben**, bis dein Google-Projekt ein Prüfverfahren („Audit“) bestanden hat. Lies dazu den Abschnitt [YouTube-Freigabe](#5-youtube-anmeldung-und-freigabe) bevor du viel Zeit in die Einrichtung steckst.
 
 ## 1. Was du brauchst
 
@@ -36,7 +38,7 @@ Der Installer prüft **uv**, **ffmpeg** und **Ollama** und bietet an, fehlende P
 
 Beim ersten Start öffnet sich der Einrichtungsassistent von selbst. Du kannst ihn später im Tray-Menü (Symbol unten rechts neben der Uhr, Rechtsklick) über **Einrichtung öffnen** erneut starten.
 
-0. **Upload-Art wählen:** „Direkt von diesem PC“ (empfohlen für den Start) oder „Über einen Server“.
+0. **Upload-Art wählen:** „Von Hand hochladen“ (empfohlen für den Start, ohne YouTube-Projekt), „Direkt von diesem PC“ (automatisch, braucht ein Google-Projekt) oder „Über einen Server“.
 1. **Rechner prüfen:** zeigt, ob ffmpeg, Ollama und die Grafikkarte gefunden wurden.
 2. **Ordner:** Datenordner (Standard ist in Ordnung), die **Server-Freigabe** (der Ordner, in dem der Upload-Server arbeitet; darin müssen `.upload`, `Fertig` und `Pruefen` liegen, siehe Abschnitt 4), der Oberordner deiner Aufnahmen, ffmpeg-Ordner, Ollama und der Link zu deinem Kanal.
 3. **Spiele:** Wähle Spiele aus der Bibliothek oder tippe einen eigenen Namen (ohne `: / \ ? * " < > |`). Pro Spiel stellst du die Folgenlänge und die Veröffentlichungstage ein. Für jedes Spiel entsteht ein Aufnahmeordner unter deinem Aufnahmen-Oberordner; lege dort deine Videodateien ab.
@@ -57,7 +59,23 @@ Im Paket liegt der Ordner `server`. Das fertige Server-Image wird automatisch be
 
 Der Server meldet seine Version an den PC; passen beide nicht zusammen, warnt das Tray-Symbol.
 
+## Manuell hochladen (ohne YouTube-Projekt)
+
+Das ist der einfachste Weg und braucht **keine** Anmeldung und **kein** Google-Projekt. VODWerft schneidet, vergibt Titel und Beschreibung und erstellt das Vorschaubild. Den Upload machst du selbst in YouTube Studio, das dauert etwa eine Minute pro Folge. Dein Video wird dabei nicht auf „privat“ gezwungen.
+
+1. Rechtsklick auf das Tray-Symbol → **Manuell hochladen**. (Der Eintrag erscheint nur in dieser Betriebsart.)
+2. Links wählst du eine fertige Folge. Nur freigegebene und fertige Folgen stehen in der Liste.
+3. **YouTube Studio öffnen** und das Video hineinziehen. Mit **Video im Ordner zeigen** findest du die Datei.
+4. **Titel kopieren** und in YouTube einfügen, danach **Beschreibung kopieren** und **Tags**.
+5. Als Miniaturansicht das Vorschaubild hochladen (**Vorschaubild zeigen**).
+6. Steht dort ein **geplanter Termin**, stellst du ihn in YouTube unter Sichtbarkeit → Planen ein.
+7. Zum Schluss **Als hochgeladen markieren**. Die Folge wandert in den Ordner „Fertig“ und verschwindet aus der Liste.
+
+Du kannst später in den Einrichtungsassistenten wechseln („Einrichtung öffnen“) und auf automatischen Upload umstellen.
+
 ## 5. YouTube-Anmeldung und Freigabe
+
+Dieses Kapitel brauchst du **nur für den automatischen Upload** (direkt vom PC oder über den Server). Beim manuellen Upload kannst du es überspringen.
 
 Die Anmeldung machst du einmalig und selbst; dein Google-Passwort gibst du nirgends in VODWerft ein.
 
@@ -92,7 +110,9 @@ Zuerst in beiden Modi:
 |---|---|
 | Der Assistent meldet, `.upload` fehle | Freigabe prüfen: Laufwerk verbunden? Ordner auf dem Server angelegt? |
 | Es passiert nichts | Im Tray-Menü Status ansehen; Datenordner öffnen, dort `production\watcher.log` lesen |
-| Videos bleiben privat | Siehe Abschnitt 5, erste Einschränkung |
+| Videos bleiben privat | Siehe Abschnitt 5, erste Einschränkung. Mit „Von Hand hochladen“ tritt das nicht auf |
+| „Manuell hochladen“ fehlt im Tray-Menü | Der Eintrag erscheint nur in der Betriebsart „Von Hand“. Im Assistenten („Einrichtung öffnen“) prüfen |
+| Die Liste unter „Manuell hochladen“ ist leer | Es erscheinen nur freigegebene, fertig bearbeitete Folgen. Mit „Aktualisieren“ neu laden |
 | Anmeldung abgelaufen | `request.token` neu erzeugen (Abschnitt 5, Punkt 6) |
 | Zu wenig Grafikspeicher | Kleinere Modelle wählen oder anderen Rechner nutzen |
 | Windows warnt beim Installer | Normal, der Installer ist noch nicht signiert. „Weitere Informationen“, „Trotzdem ausführen“ (Kapitel 2) |

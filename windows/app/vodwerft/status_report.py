@@ -283,7 +283,7 @@ if __name__ == "__main__":
         if server and not compatible(program_version(), server) and not active:
             status = {"detail": f"Server-Version {server} passt nicht zu {program_version()}: bitte Server aktualisieren"}
         try:
-            state = server_state(directory, program_version(), direct=config.get("upload_mode") == "direct")
+            state = server_state(directory, program_version(), direct=config.get("upload_mode") in ("direct", "manual"))
             if state["state"] == "offline" and last_server and time.time() - last_server[0] < 90:
                 state = last_server[1]  # kurzer Aussetzer der Netzwerkfreigabe: erst nach 90 s als nicht erreichbar melden
             elif state["state"] != "offline":

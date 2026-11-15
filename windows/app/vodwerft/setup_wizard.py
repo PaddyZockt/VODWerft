@@ -134,6 +134,9 @@ class Wizard(tk.Tk):
                 ("direct", "Direkt von diesem PC (einfach)",
                  "Kein Server nötig. Der PC lädt die fertigen Folgen selbst zu YouTube hoch. Er muss nur beim Hochladen an sein, "
                  "nicht zur Veröffentlichungszeit."),
+                ("manual", "Von Hand hochladen (ohne YouTube-Projekt)",
+                 "Am einfachsten für den Start: Kein Google-Projekt, keine Anmeldung. VODWerft bereitet Video, Titel, Beschreibung "
+                 "und Vorschaubild vor und öffnet YouTube Studio. Du ziehst die Datei dort selbst hinein."),
                 ("server", "Über einen Server (Docker)",
                  "Für Dauerbetrieb: Der Server lädt rund um die Uhr hoch, die YouTube-Zugangsdaten liegen nicht auf dem Spiele-PC. "
                  "Der Server muss vorher eingerichtet sein.")):
@@ -284,6 +287,9 @@ class Wizard(tk.Tk):
         ttk.Label(self.body, justify="left", wraplength=590, text=(
             ("\nDie YouTube-Anmeldung findest du im Menü des Tray-Symbols unter „Einrichtung öffnen“, falls du sie übersprungen hast."
              if self.mode.get() == "direct" else
+             "\nVon Hand hochladen: Im Tray-Menü gibt es den Eintrag „Manuell hochladen“. Dort liegen fertige Folgen bereit, "
+             "mit Titel, Beschreibung und Vorschaubild zum Kopieren."
+             if self.mode.get() == "manual" else
              "\nNoch von Hand (einmalig): die YouTube-Anmeldung. Dafür brauchst du ein eigenes Google-Projekt mit YouTube-Zugang "
              "und legst die Zugangsdatei im Server-Ordner ab. Die genaue Anleitung steht im Benutzerhandbuch."))).pack(anchor="w")
 

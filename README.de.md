@@ -27,13 +27,14 @@ Der Windows-PC bearbeitet das Material. Der Upload läuft entweder **direkt vom 
 - Aufnahmeprofile pro Spiel (Bibliothek mit Beispielen oder eigener Name), Folgenlänge und Veröffentlichungstage einstellbar.
 - Tray-Symbol mit Status, Dashboard und Einrichtungsassistent.
 - **Sicher voreingestellt:** Nichts wird hochgeladen, bevor du es freigibst. Jede Folge wartet auf deine Freigabe.
-- Upload zu YouTube mit Zeitplan, direkt vom PC oder über den Docker-Server.
+- **Manuell hochladen (ohne Google-Projekt):** VODWerft bereitet Video, Titel, Beschreibung und Vorschaubild vor und öffnet YouTube Studio. Du ziehst die Datei selbst hinein.
+- Automatischer Upload zu YouTube mit Zeitplan, direkt vom PC oder über den Docker-Server (braucht ein eigenes Google-Projekt).
 
 ## Voraussetzungen
 
 - Windows-PC (getestet mit Windows 11) mit **NVIDIA-Grafikkarte, 16 GB Grafikspeicher** empfohlen, rund 30 GB freier Speicher.
 - Internetverbindung: Die lokalen KI-Modelle sind rund **25 GB** groß, der Download dauert je nach Leitung 30 Minuten bis mehrere Stunden.
-- Ein YouTube-Kanal und ein Google-Konto. Für den **Upload** brauchst du ein eigenes Google-Cloud-Projekt mit YouTube-Zugang. Das ist der aufwendigste Teil, er ist im [Handbuch](docs/HANDBUCH.de.md) Schritt für Schritt beschrieben. Bis dahin kannst du alles bis zur fertigen Folge ausprobieren.
+- Ein YouTube-Kanal. Mit **„Von Hand hochladen“** brauchst du sonst nichts. Nur für den **automatischen Upload** brauchst du ein eigenes Google-Cloud-Projekt mit YouTube-Zugang. Das ist der aufwendigste Teil, er ist im [Handbuch](docs/HANDBUCH.de.md) Schritt für Schritt beschrieben.
 - *Optional:* ein Docker-Host (Linux, Unraid, NAS) für den Server-Modus.
 - OBS mit getrennten Tonspuren für die Aufnahme.
 
