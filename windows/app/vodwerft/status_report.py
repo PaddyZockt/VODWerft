@@ -67,6 +67,21 @@ def checksum_status(work):
     return None
 
 
+def review_reason(path):
+    """Letzte Fehlermeldung aus dem Auftragsprotokoll (z. B. "Unbekannte Mehrspurbelegung. ..."), sonst leer."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(max(0, path.stat().st_size - 64 * 1024))
+            lines = handle.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        found = re.fullmatch(r"\s*[A-Za-z_.]*(?:Error|Exception): (.{3,160})", ANSI.sub("", line))
+        if found:
+            return found[1].strip()
+    return ""
+
+
 def log_phase(path, fallback):
     if not path.is_file():
         return fallback
@@ -217,7 +232,8 @@ def publish_status(config, directory, *, clock=time.monotonic):
         elif status == "processing":
             detail = log_phase(work / f"{key}.log", "Aufnahme erkannt, Bearbeitung wird vorbereitet")
         elif status == "review":
-            detail = "Bearbeitung braucht eine Prüfung"
+            reason = review_reason(Path(work) / f"{key}.log")
+            detail = "Bearbeitung braucht eine Prüfung" + (f": {reason} Dashboard, Verlauf, Export erneut versuchen." if reason else "")
         elif clips is None and config.get("clips_config"):
             detail = log_phase(work / f"{key}.clips.log", "Folgen fertig, Hochkant-Clips werden vorbereitet")
         elif clips == "review":
@@ -248,7 +264,7 @@ def publish_status(config, directory, *, clock=time.monotonic):
         if (status == "processing" or key in transfers
                 or (status == "ready" and clips in (None, "retrying") and config.get("clips_config"))):
             active.append({"source": Path(source).name, "detail": detail})
-        elif status in ("awaiting_start", "retry") or awaiting_approval:
+        elif status in ("awaiting_start", "retry", "review") or awaiting_approval:
             pending.append({"source": Path(source).name, "detail": detail.removeprefix("Aufnahme erkannt. ")})
     publish(work, "processed-inputs", {"jobs": processed, "updated": int(time.time())})
     return active, pending, list(processed.values())

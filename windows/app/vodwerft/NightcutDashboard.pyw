@@ -451,8 +451,11 @@ def main():
             notify("Export wird erneut versucht.", "success")
             refresh()
 
-        if row.needs_render_check:
-            ttk.Button(buttons, text="Export erneut versuchen", command=again).pack(side="left")
+        # Immer sichtbar; ausgegraut, solange kein Export auf eine Prüfung wartet.
+        retry_button = ttk.Button(buttons, text="Export erneut versuchen", command=again)
+        retry_button.pack(side="left")
+        if not row.needs_render_check:
+            retry_button.state(["disabled"])
         ttk.Button(buttons, text="Schließen (Esc)", command=window.destroy).pack(side="right")
         listing.focus_set()
 

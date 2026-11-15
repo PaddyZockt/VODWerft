@@ -474,6 +474,9 @@ def scan(config, db, observations):
                 process_clips(recording_settings(config, key), db, source, key)
             observations[source] = (signature, since, True)
             continue
+        if old and old[0] == "retry":
+            # Bei „Export erneut versuchen“ gelten die aktuellen Einstellungen des Spiels, nicht die beim ersten Start eingefrorenen.
+            (Path(config["work"]) / f"{key}.profile.json").unlink(missing_ok=True)
         job_config = recording_settings(config, key, save=True)
         trim = source.with_suffix(".start.txt")
         waiting = job_config.get("mission_export") and job_config.get("require_mission_start") and not trim.is_file()

@@ -6,7 +6,7 @@
 
 [English](README.md) · [**Download (Beta)**](https://github.com/PaddyZockt/VODWerft/releases/latest) · [Handbuch](docs/HANDBUCH.de.md)
 
-> **0.1.0-beta.2 · Beta zum Ausprobieren.** Der Windows-Installer ist da und läuft auf Windows 11 mit NVIDIA-Grafikkarte. Er ist noch **nicht digital signiert**, Windows zeigt deshalb eine Warnung (siehe unten). Auf frischen Rechnern ist er noch wenig getestet. Fehler bitte als Issue melden.
+> **0.1.0-beta.3 · Beta zum Ausprobieren.** Der Windows-Installer ist da und läuft auf Windows 11 mit NVIDIA-Grafikkarte. Er ist noch **nicht digital signiert**, Windows zeigt deshalb eine Warnung (siehe unten). Auf frischen Rechnern ist er noch wenig getestet. Fehler bitte als Issue melden.
 
 ## So funktioniert der Ablauf
 
