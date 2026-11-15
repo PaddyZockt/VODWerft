@@ -4,11 +4,12 @@
 
 **Aus langen OBS-Aufnahmen werden Folgen und Highlights. Windows schneidet, auf Wunsch übernimmt dein Docker-Server den YouTube-Upload.**
 
-[English](README.md)
+**[English version → README.md](README.md)** · das englische User Guide ist unten verlinkt
 
 <p align="center">
   <a href="https://github.com/PaddyZockt/VODWerft/releases/latest"><img alt="Download" src="https://img.shields.io/badge/Download-Beta-2ea44f?style=for-the-badge"></a>
   <a href="docs/HANDBUCH.de.md"><img alt="Handbuch" src="https://img.shields.io/badge/Handbuch-Deutsch-1f6feb?style=for-the-badge"></a>
+  <a href="docs/USER-GUIDE.en.md"><img alt="User_guide" src="https://img.shields.io/badge/User_guide-English-1f6feb?style=for-the-badge"></a>
   <a href="https://github.com/PaddyZockt/VODWerft/issues"><img alt="Support" src="https://img.shields.io/badge/Support-Issues-d29922?style=for-the-badge"></a>
   <a href="https://github.com/PaddyZockt/VODWerft/issues/new"><img alt="Feedback" src="https://img.shields.io/badge/Feedback-Issue_melden-8957e5?style=for-the-badge"></a>
 </p>
@@ -55,7 +56,7 @@ uv, ffmpeg und Ollama installiert der Installer auf Wunsch selbst. Es wird nicht
 3. Den Fragen im Installer folgen. Eine Schrittliste und ein Fortschrittsbalken zeigen, wo er steht.
 4. Am Ende öffnet sich der Einrichtungsassistent.
 
-Das **[Handbuch](docs/HANDBUCH.de.md)** erklärt Installation, Einrichtung, YouTube-Anmeldung, Deinstallation und häufige Probleme. Datenschutz: [DATENSCHUTZ.de.md](docs/DATENSCHUTZ.de.md).
+Das **[Handbuch](docs/HANDBUCH.de.md)** (Englisch: **[User guide](docs/USER-GUIDE.en.md)**) erklärt Installation, Einrichtung, YouTube-Anmeldung, Deinstallation und häufige Probleme. Datenschutz: [DATENSCHUTZ.de.md](docs/DATENSCHUTZ.de.md).
 
 ## Deinstallieren
 

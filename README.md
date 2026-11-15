@@ -4,11 +4,12 @@
 
 **Turn long OBS recordings into episodes and highlights. Windows does the cutting; an optional Docker server handles the YouTube upload.**
 
-[Deutsch](README.de.md)
+**[Deutsche Version (German) → README.de.md](README.de.md)** · the German manual is linked below
 
 <p align="center">
   <a href="https://github.com/PaddyZockt/VODWerft/releases/latest"><img alt="Download" src="https://img.shields.io/badge/Download-Beta-2ea44f?style=for-the-badge"></a>
   <a href="docs/USER-GUIDE.en.md"><img alt="User_guide" src="https://img.shields.io/badge/User_guide-English-1f6feb?style=for-the-badge"></a>
+  <a href="docs/HANDBUCH.de.md"><img alt="Handbuch" src="https://img.shields.io/badge/Handbuch-Deutsch-1f6feb?style=for-the-badge"></a>
   <a href="https://github.com/PaddyZockt/VODWerft/issues"><img alt="Support" src="https://img.shields.io/badge/Support-Issues-d29922?style=for-the-badge"></a>
   <a href="https://github.com/PaddyZockt/VODWerft/issues/new"><img alt="Feedback" src="https://img.shields.io/badge/Feedback-Open_an_issue-8957e5?style=for-the-badge"></a>
 </p>
@@ -55,7 +56,7 @@ The installer can install uv, ffmpeg and Ollama for you on request. Nothing is i
 3. Follow the installer questions. A step list and a progress bar show where it is.
 4. At the end the setup assistant opens.
 
-The **[user guide](docs/USER-GUIDE.en.md)** covers installation, setup, YouTube sign-in, uninstalling and common problems. German privacy notes: [DATENSCHUTZ.de.md](docs/DATENSCHUTZ.de.md).
+The **[user guide](docs/USER-GUIDE.en.md)** (German: **[Handbuch](docs/HANDBUCH.de.md)**) covers installation, setup, YouTube sign-in, uninstalling and common problems. German privacy notes: [DATENSCHUTZ.de.md](docs/DATENSCHUTZ.de.md).
 
 ## Uninstall
 
