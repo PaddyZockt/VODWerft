@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+import description_template
 from atomic import atomic_write
 from game_library import find as find_preset
 from retention import write
@@ -101,6 +102,10 @@ def save_profile(main, path, *, minutes, mode, audio_track, split, style, manual
         else:
             profile = {"name": name, "keywords": {}, "vision_hints": name}
         game.write_text(yaml.safe_dump(profile, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        # Neue Spiele bekommen gleich eine eigene Beschreibungsvorlage (bearbeitbar im Profil-Editor).
+        description = main.parent / f"{prefix}-description.txt"
+        description_template.write_text(description, description_template.default_text(name, config.get("developer")))
+        config["description"] = str(description)
     elif config.get("mission_export") and mode != "per_recording":
         raise ValueError("Das vorhandene Missionsprofil erstellt genau eine Folge pro Aufnahme.")
     if split and not config.get("split_clips_config"):

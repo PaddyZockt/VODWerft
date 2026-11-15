@@ -4,12 +4,14 @@ Versions follow [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`. While the nu
 
 Versionen folgen [SemVer](https://semver.org/lang/de/): `MAJOR.MINOR.PATCH`. Solange die Zahl mit `0.` beginnt, kann sich noch etwas ändern. PC und Server müssen dieselbe MAJOR-Version haben, bei `0.x` zusätzlich dieselbe MINOR-Version.
 
-## Unreleased / Noch nicht veröffentlicht
+## 0.1.0-beta.4
 
 **English**
+- **Description template per game:** a new "Description" section in the game profile editor lets you edit one description that every episode of that game gets (links, hardware, mod notes). Chapter marks are still added automatically. New games get a starter template right away. Without a template the AI still writes each description.
 - The job history window now shows date and time (e.g. "15.11. 18:25:38") instead of a wrongly formatted number.
 
 **Deutsch**
+- **Beschreibungsvorlage pro Spiel:** Im Profil-Editor gibt es einen neuen Abschnitt „Beschreibung“. Dort bearbeitest du eine Beschreibung, die jede Folge dieses Spiels bekommt (Links, Hardware, Hinweise zur Mod). Die Kapitelmarken hängt das Programm weiter selbst an. Neue Spiele bekommen sofort eine Startvorlage. Ohne Vorlage schreibt die KI die Beschreibung wie bisher.
 - Das Verlaufsfenster zeigt jetzt Datum und Uhrzeit (z. B. „15.11. 18:25:38“) statt einer falsch formatierten Zahl.
 
 ## 0.1.0-beta.3

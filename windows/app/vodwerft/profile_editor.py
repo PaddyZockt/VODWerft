@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox, ttk
 import yaml
 
 import caption_style_editor
+import description_template
 import thumbnail_style_editor
 import game_library
 import theme
@@ -148,6 +149,11 @@ def build(parent, main, on_save):
     caption_button = ttk.Button(caption_row, text="Clip-Stil …")
     caption_button.pack(side="left")
     add("Untertitel", caption_row, "clips")
+    section("BESCHREIBUNG")
+    description_button = ttk.Button(fields, text="Beschreibungsvorlage bearbeiten…")
+    add("Text für alle Folgen", description_button,
+        help_text="Diese Beschreibung bekommt jede Folge dieses Spiels, mit deinen Links und deiner Hardware. "
+                  "Die Kapitelmarken hängt das Programm selbst an. Ohne Vorlage schreibt die KI jede Beschreibung neu.")
     section("VERÖFFENTLICHUNG")
     add("Termine", ttk.Checkbutton(fields, text="Im Kalender selbst auswählen", variable=manual))
     day_bar = ttk.Frame(fields)
@@ -214,6 +220,61 @@ def build(parent, main, on_save):
             series = None
         thumbnail_style_editor.open_in(frame, state["thumb"], apply, series=series, style=STYLES[style.get()])
 
+    def edit_description():
+        try:
+            config = read_settings(selected_path())
+            path = description_template.template_path(config)
+            if path is None:  # noch keine Vorlage: Startvorlage anlegen und im Profil eintragen
+                path = selected_path().parent / f"{Path(selected_path()).stem}-description.txt"
+                text = description_template.default_text(config.get("series", "Spiel"), config.get("developer"))
+            else:
+                text = description_template.read_text(path) if path.is_file() else description_template.default_text(
+                    config.get("series", "Spiel"), config.get("developer"))
+        except (OSError, ValueError, KeyError, yaml.YAMLError) as error:
+            hint.configure(text=problem("Die Beschreibungsvorlage konnte nicht geöffnet werden.", error,
+                                        "Beschreibungsvorlage lesen"), style="Danger.TLabel")
+            return
+        window = tk.Toplevel(frame)
+        window.title("Beschreibungsvorlage")
+        window.geometry("760x560")
+        window.transient(frame.winfo_toplevel())
+        box = tk.Text(window, wrap="word", undo=True, font=("Segoe UI", 10))
+        box.insert("1.0", text)
+        box.pack(fill="both", expand=True, padx=12, pady=(12, 6))
+        counter = ttk.Label(window, style="Muted.TLabel")
+        counter.pack(anchor="w", padx=12)
+
+        def count(_=None):
+            counter.configure(text=f"{len(box.get('1.0', 'end').strip())} von {description_template.LIMIT} Zeichen")
+
+        box.bind("<<Modified>>", lambda _: (count(), box.edit_modified(False)))
+        count()
+
+        def store():
+            try:
+                description_template.write_text(path, box.get("1.0", "end"))
+                if description_template.template_path(read_settings(selected_path())) != path:
+                    config_now = read_settings(selected_path())
+                    config_now["description"] = str(path)
+                    from retention import write
+                    write(selected_path(), config_now)
+            except ValueError as error:
+                messagebox.showerror("Beschreibungsvorlage", str(error), parent=window)
+                return
+            except (OSError, KeyError, yaml.YAMLError) as error:
+                messagebox.showerror("Beschreibungsvorlage", problem(
+                    "Die Vorlage konnte nicht gespeichert werden.", error, "Beschreibungsvorlage speichern"),
+                    parent=window)
+                return
+            window.destroy()
+            hint.configure(text="Beschreibungsvorlage gespeichert. Sie gilt für neue Folgen.", style="Success.TLabel")
+
+        buttons = ttk.Frame(window)
+        buttons.pack(fill="x", padx=12, pady=12)
+        ttk.Button(buttons, text="Speichern", command=store).pack(side="right")
+        ttk.Button(buttons, text="Abbrechen", command=window.destroy).pack(side="right", padx=(0, 8))
+
+    description_button.configure(command=edit_description)
     thumb_button.configure(command=edit_thumb)
     caption_button.configure(command=edit_caption)
     caption_swatch.bind("<Button-1>", lambda _: edit_caption())
