@@ -4,7 +4,15 @@
 
 **Turn long OBS recordings into episodes and highlights. Windows does the cutting; an optional Docker server handles the YouTube upload.**
 
-[Deutsch](README.de.md) · [**Download (beta)**](https://github.com/PaddyZockt/VODWerft/releases/latest) · [User guide](docs/USER-GUIDE.en.md)
+[Deutsch](README.de.md)
+
+<p align="center">
+  <a href="https://github.com/PaddyZockt/VODWerft/releases/latest"><img alt="Download" src="https://img.shields.io/badge/Download-Beta-2ea44f?style=for-the-badge"></a>
+  <a href="docs/USER-GUIDE.en.md"><img alt="User_guide" src="https://img.shields.io/badge/User_guide-English-1f6feb?style=for-the-badge"></a>
+  <a href="https://github.com/PaddyZockt/VODWerft/issues"><img alt="Support" src="https://img.shields.io/badge/Support-Issues-d29922?style=for-the-badge"></a>
+  <a href="https://github.com/PaddyZockt/VODWerft/issues/new"><img alt="Feedback" src="https://img.shields.io/badge/Feedback-Open_an_issue-8957e5?style=for-the-badge"></a>
+</p>
+
 
 > **0.1.0-beta.3 · Beta to try out.** The Windows installer is available and runs on Windows 11 with an NVIDIA GPU. It is **not code-signed yet**, so Windows shows a warning (see below). It has had little testing on fresh machines. Please report problems as an issue.
 
