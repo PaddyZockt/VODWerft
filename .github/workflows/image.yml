@@ -29,6 +29,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            # Vorabversionen (Betas) bekommen kein major.minor; die Compose-Datei nutzt "latest", damit sie immer ein Image findet
+            type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
           context: server

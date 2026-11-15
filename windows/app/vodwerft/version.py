@@ -51,3 +51,22 @@ def nightcut_version():
     except OSError:
         pass
     return ""
+
+
+def update_label():
+    """Bezeichnung des zuletzt eingespielten Update-Pakets (Datei UPDATE, z. B. 20261115e), sonst ''."""
+    if getattr(sys, "frozen", False):
+        base = Path(sys.executable).resolve().parents[1]
+    else:
+        base = Path(__file__).resolve().parent.parent
+    try:
+        text = (base / "UPDATE").read_text(encoding="utf-8-sig").strip()
+    except OSError:
+        return ""
+    return text if re.fullmatch(r"\d{8}[a-z]{1,2}", text) else ""
+
+
+def full(directory=None):
+    """Version samt Update-Paket, z. B. '1.1.0 (Update 20261115e)'; ohne Paket nur die Version."""
+    version, label = read(directory), update_label()
+    return f"{version} (Update {label})" if label and version != "unbekannt" else version

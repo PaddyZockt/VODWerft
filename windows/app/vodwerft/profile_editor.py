@@ -48,7 +48,15 @@ def build(parent, main, on_save):
     canvas.pack(side="left", fill="both", expand=True)
     fields = ttk.Frame(canvas)
     inner = canvas.create_window(0, 0, anchor="nw", window=fields)
-    fields.columnconfigure(1, weight=1)
+    # Zwei Spalten nebeneinander, damit das Profil ohne Scrollen auf den Bildschirm passt.
+    fields.columnconfigure((0, 1), weight=1, uniform="spalte")
+    columns = []
+    for index in (0, 1):
+        column = ttk.Frame(fields)
+        column.grid(row=0, column=index, sticky="new", padx=(0, 28) if index == 0 else (0, 0))
+        column.columnconfigure(1, weight=1)
+        columns.append([column, 0])
+    current = [0]
 
     def resize(_=None):
         canvas.configure(scrollregion=(0, 0, fields.winfo_reqwidth(), fields.winfo_reqheight()))
@@ -88,29 +96,30 @@ def build(parent, main, on_save):
     state = {"index": -1, "saved": None, "loading": False, "caption": None, "caption_changed": False,
              "thumb": {}, "thumb_changed": False, "clips": False, "facecam": True, "fonts_dir": None}
 
-    row_number = [0]
     shown = {}
 
-    def section(title, key=None):
-        label = ttk.Label(fields, text=title, style="Brand.TLabel")
-        label.grid(row=row_number[0], column=0, columnspan=2, sticky="w",
-                   pady=(theme.PAD_BLOCK if row_number[0] else 0, 2))
-        row_number[0] += 1
+    def section(title, key=None, column=None):
+        if column is not None:
+            current[0] = column
+        holder, count = columns[current[0]]
+        label = ttk.Label(holder, text=title, style="Brand.TLabel")
+        label.grid(row=count, column=0, columnspan=2, sticky="w", pady=(theme.PAD_BLOCK if count else 0, 2))
+        columns[current[0]][1] += 1
         if key:
             shown.setdefault(key, []).append(label)
 
     def add(label, widget, key=None, help_text=None):
-        row = row_number[0]
-        row_number[0] += 1
-        name = ttk.Label(fields, text=label)
+        holder, row = columns[current[0]]
+        columns[current[0]][1] += 1
+        name = ttk.Label(holder, text=label)
         name.grid(row=row, column=0, sticky="nw" if help_text else "w", padx=(0, 16), pady=theme.PAD_ROW)
-        widget.grid(row=row, column=1, sticky="w", pady=theme.PAD_ROW)
+        widget.grid(row=row, column=1, sticky="w", pady=theme.PAD_ROW, in_=holder)
         if key:
             shown.setdefault(key, []).extend((name, widget))
         if help_text:
-            note = ttk.Label(fields, text=help_text, style="Small.Muted.TLabel", wraplength=560, justify="left")
-            note.grid(row=row_number[0], column=1, sticky="w", pady=(0, theme.PAD_ROW))
-            row_number[0] += 1
+            note = ttk.Label(holder, text=help_text, style="Small.Muted.TLabel", wraplength=330, justify="left")
+            note.grid(row=columns[current[0]][1], column=1, sticky="w", pady=(0, theme.PAD_ROW))
+            columns[current[0]][1] += 1
             if key:
                 shown[key].append(note)
 
@@ -121,8 +130,8 @@ def build(parent, main, on_save):
             for widget in shown[key]:
                 widget.grid() if visible else widget.grid_remove()
 
-    inbox = ttk.Label(fields, style="Muted.TLabel", wraplength=650)
-    section("AUFNAHME")
+    inbox = ttk.Label(fields, style="Muted.TLabel", wraplength=330)
+    section("AUFNAHME", column=0)
     add("Eingangsordner", inbox)
     add("Tonspur für Spracherkennung", ttk.Spinbox(fields, from_=1, to=16, textvariable=audio, width=8),
         help_text="Die Tonspur deiner Aufnahme, auf der dein Mikrofon zu hören ist. Nimmst du nur eine Spur auf, "
@@ -149,7 +158,7 @@ def build(parent, main, on_save):
     caption_button = ttk.Button(caption_row, text="Clip-Stil …")
     caption_button.pack(side="left")
     add("Untertitel", caption_row, "clips")
-    section("BESCHREIBUNG")
+    section("BESCHREIBUNG", column=1)
     description_button = ttk.Button(fields, text="Beschreibungsvorlage bearbeiten…")
     add("Text für alle Folgen", description_button,
         help_text="Diese Beschreibung bekommt jede Folge dieses Spiels, mit deinen Links und deiner Hardware. "

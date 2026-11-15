@@ -4,7 +4,7 @@
 name: vodwerft
 services:
   youtube-uploader:
-    image: ghcr.io/paddyzockt/vodwerft-uploader:0.1
+    image: ghcr.io/paddyzockt/vodwerft-uploader:latest
     # Selbst bauen statt herunterladen: die naechsten zwei Zeilen einkommentieren, "image" dabei stehen lassen
     # build: { context: ., dockerfile: Dockerfile }
     container_name: vodwerft-uploader

@@ -78,6 +78,8 @@ You do this once, yourself; VODWerft never asks for your Google password.
 
 **Server mode:** follow steps 4 and 5 below.
 
+**You need your own Google project.** The author of VODWerft does not share his own project, and `client_secrets.json` is tied to one project. Everybody creates their own project (free; steps below). YouTube's quota and the limits described below then apply to your project. If that is too much effort, use "Von Hand hochladen" (manual upload) instead.
+
 1. Create a project in the Google Cloud Console and enable **YouTube Data API v3**.
 2. Configure the OAuth consent screen and add yourself as a test user.
 3. Create an OAuth client of type *Desktop app* and download `client_secrets.json`.

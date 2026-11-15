@@ -84,7 +84,7 @@ def enqueue(video, metadata, incoming, *, name=None, thumbnail=None):
             after = source.stat()
             if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
                 raise OSError("Source changed during transfer")
-            partial.rename(final)
+            partial.replace(final)
             created[-1] = final
         with marker.open("x"):
             pass

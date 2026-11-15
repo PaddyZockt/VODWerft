@@ -83,6 +83,8 @@ Die Anmeldung machst du einmalig und selbst; dein Google-Passwort gibst du nirge
 
 **Server-Modus:** Folge den Schritten 5 und 6 unten.
 
+**Wichtig: Du brauchst ein eigenes Google-Projekt.** Der Autor von VODWerft teilt sein eigenes Projekt nicht, und die Zugangsdatei (`client_secrets.json`) ist an ein Projekt gebunden. Jede Person legt sich also ihr eigenes Projekt an (kostenlos, die Schritte unten). Das Kontingent und die oben genannten Einschränkungen von YouTube gelten dann für dein Projekt. Wenn dir das zu aufwendig ist, nimm den Weg „Von Hand hochladen“.
+
 Zuerst in beiden Modi:
 
 1. In der Google Cloud Console ein **neues Projekt** anlegen.

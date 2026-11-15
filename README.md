@@ -15,7 +15,7 @@
 </p>
 
 
-> **0.1.0-beta.4 · Beta to try out.** The Windows installer is available and runs on Windows 11 with an NVIDIA GPU. It is **not code-signed yet**, so Windows shows a warning (see below). It has had little testing on fresh machines. Please report problems as an issue.
+> **0.1.0-beta.5 · Beta to try out.** The Windows installer is available and runs on Windows 11 with an NVIDIA GPU. It is **not code-signed yet**, so Windows shows a warning (see below). It has had little testing on fresh machines. Please report problems as an issue.
 
 ## How it works
 

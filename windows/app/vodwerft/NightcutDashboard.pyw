@@ -17,11 +17,13 @@ from queue import Empty, Queue
 from threading import Thread
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+import diagnostics
 import settings as user_settings
+import self_update
 import single_instance
 import settings_window
 import theme
-from version import read as program_version, nightcut_version
+from version import read as program_version, full as program_version_full, nightcut_version
 from release_calendar import build as build_calendar, youtube_dates
 from release_slots import berlin_slot
 from game_profiles import load_profiles
@@ -51,6 +53,93 @@ NOTICE_SECONDS = 8
 GROUP = "grp:"
 
 
+def set_taskbar_icon(window, icon_path):
+    """Setzt das Fenstersymbol direkt ueber Windows (WM_SETICON), damit die Taskleiste unser Symbol statt das von
+    pythonw.exe zeigt. Tk allein reicht dafuer nicht immer."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        user32.LoadImageW.restype = ctypes.c_void_p
+        user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+        window.update_idletasks()
+        handle = user32.GetParent(window.winfo_id()) or window.winfo_id()
+        for kind, size in ((1, 48), (0, 16)):  # ICON_BIG (Taskleiste, Alt+Tab), ICON_SMALL (Titelleiste)
+            icon = user32.LoadImageW(None, str(icon_path), 1, size, size, 0x10)  # IMAGE_ICON, LR_LOADFROMFILE
+            if icon:
+                user32.SendMessageW(handle, 0x80, kind, icon)  # WM_SETICON
+    except (AttributeError, OSError):
+        pass
+
+
+def set_taskbar_identity(window, name, icon_path, command):
+    """Gibt der Taskleisten-Gruppe Name, Symbol und Startbefehl (Windows-Fenstereigenschaften), sonst steht dort
+    'Python 3.13 (Windowed)' mit dem Python-Symbol. Fehler werden still ignoriert."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        import uuid
+        from ctypes import POINTER, Structure, byref, c_ubyte, c_ulong, c_ushort, c_void_p, cast, windll
+
+        class GUID(Structure):
+            _fields_ = [("a", c_ulong), ("b", c_ushort), ("c", c_ushort), ("d", c_ubyte * 8)]
+
+        class PROPERTYKEY(Structure):
+            _fields_ = [("fmtid", GUID), ("pid", c_ulong)]
+
+        class PROPVARIANT(Structure):
+            _fields_ = [("vt", c_ushort), ("r1", c_ushort), ("r2", c_ushort), ("r3", c_ushort),
+                        ("ptr", c_void_p), ("pad", c_void_p)]
+
+        def guid(text):
+            return GUID.from_buffer_copy(uuid.UUID(text).bytes_le)
+
+        window.update_idletasks()
+        handle = windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
+        store = c_void_p()
+        windll.shell32.SHGetPropertyStoreForWindow.argtypes = [c_void_p, POINTER(GUID), POINTER(c_void_p)]
+        if windll.shell32.SHGetPropertyStoreForWindow(handle, byref(guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")),
+                                                      byref(store)) != 0 or not store:
+            return
+        table = cast(store, POINTER(POINTER(c_void_p)))[0]
+        set_value = ctypes.WINFUNCTYPE(ctypes.c_long, c_void_p, POINTER(PROPERTYKEY), POINTER(PROPVARIANT))(table[6])
+        commit = ctypes.WINFUNCTYPE(ctypes.c_long, c_void_p)(table[7])
+        release = ctypes.WINFUNCTYPE(ctypes.c_ulong, c_void_p)(table[2])
+        fmtid = guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3")
+        for pid, text in ((5, "VODWerft.Nightcut.Dashboard"), (2, command), (3, f"{icon_path},0"), (4, name)):
+            size = (len(text) + 1) * 2
+            windll.ole32.CoTaskMemAlloc.restype = c_void_p
+            memory = windll.ole32.CoTaskMemAlloc(size)
+            if not memory:
+                continue
+            ctypes.memmove(memory, ctypes.create_unicode_buffer(text), size)
+            value = PROPVARIANT()
+            value.vt = 31  # VT_LPWSTR
+            value.ptr = memory
+            set_value(store, byref(PROPERTYKEY(fmtid, pid)), byref(value))
+            windll.ole32.PropVariantClear(byref(value))
+        commit(store)
+        release(store)
+    except Exception:  # nur Optik: nie das Dashboard am Start hindern
+        pass
+
+
+def start_tray_if_missing():
+    """Startet das Tray-Symbol, wenn keins laeuft (z. B. nach Beenden), damit es mit dem Dashboard zurueckkommt."""
+    if sys.platform != "win32" or single_instance.tray_running(CONTROL):
+        return
+    exe = Path(__file__).resolve().parent.parent / "tray" / "VODWerft.exe"
+    if not exe.is_file():
+        return
+    try:
+        subprocess.Popen([str(exe), "--tray"], cwd=str(exe.parent), close_fds=True,
+                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError:
+        pass
+
+
 def main():
     # Nur ein Fenster: laeuft das Dashboard schon, bitten wir es, sich zu zeigen, und beenden uns.
     instance = single_instance.acquire_dashboard(CONTROL)
@@ -58,8 +147,16 @@ def main():
         single_instance.request_show(CONTROL)
         return
     single_instance.clear_flags(CONTROL)  # Anforderungen aus frueheren Laeufen verwerfen
+    start_tray_if_missing()
+    if sys.platform == "win32":
+        try:  # eigene Programm-Kennung: die Taskleiste zeigt dann unser Symbol, nicht das von pythonw.exe
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("VODWerft.Nightcut.Dashboard")
+        except (AttributeError, OSError):
+            pass
     root = tk.Tk()
-    root.title("VODWerft")
+    root.withdraw()  # erst zeigen, wenn Taskleisten-Name und -Symbol gesetzt sind (sonst steht dort 'Python')
+    root.title(("VODWerft " + program_version_full()).replace(" unbekannt", ""))
     # Startgroesse so, dass die Spielerprofil-Seite ohne Ziehen passt (1280 x 1030), auf kleinen Bildschirmen begrenzt.
     width = min(1280, root.winfo_screenwidth() - 48)
     height = min(1030, root.winfo_screenheight() - 100)
@@ -69,6 +166,10 @@ def main():
     root.minsize(min(900, width), min(640, height))
     try:
         root.iconbitmap(default=str(ICON))  # gilt auch fuer alle Unterfenster (Thumbnail-Stil, Clip-Stil, Einstellungen)
+        root.iconbitmap(str(ICON))  # und ausdruecklich fuer dieses Fenster (Taskleiste, Alt+Tab)
+        set_taskbar_icon(root, ICON)
+        set_taskbar_identity(root, "VODWerft", ICON,
+                             f'"{sys.executable}" -X utf8 -B "{Path(__file__).resolve()}"')
     except tk.TclError:
         pass  # Symbol fehlt (z. B. Programm nicht am Installationsort gestartet): Fenster trotzdem oeffnen
     set_log_file(ROOT / "production")
@@ -136,12 +237,141 @@ def main():
         settings_window.open_in(root, ROOT / "production")
 
     ttk.Button(nav, text="Einstellungen", command=open_settings).pack(side="right", padx=(0, theme.PAD_BUTTON))
+
+    # Update ueber Git: beim Start und alle 6 Stunden im Hintergrund suchen, ausserdem per Knopf.
+    update_state = {"label": "", "busy": False}
+    update_results = Queue()
+    update_button = ttk.Button(nav, text="Nach Updates suchen")
+    update_button.pack(side="right", padx=(0, theme.PAD_BUTTON))
+
+    def check_for_update(manual=False):
+        if update_state["busy"]:
+            return
+        update_state["busy"] = True
+        update_button.configure(text="Suche …", state="disabled")
+
+        def work():
+            try:
+                update_results.put(("checked", self_update.check(), manual))
+            except Exception as error:  # Netzwerk, Git, Anmeldung: nie das Dashboard stoeren
+                update_results.put(("error", str(error), manual))
+        Thread(target=work, daemon=True).start()
+
+    def install_update():
+        label = update_state["label"]
+        if not messagebox.askyesno(
+                "Update installieren",
+                f"Update {label} ist verfügbar (installiert: {self_update.installed() or 'unbekannt'}).\n\n"
+                "Jetzt herunterladen und installieren?\n\nDas Dashboard schließt sich dabei. Ein neues Fenster zeigt den "
+                "Fortschritt (Windows fragt nach Administratorrechten). Läuft gerade ein Schnitt, passiert nichts. "
+                "Danach öffnest du das Dashboard wieder über das Tray-Symbol.", parent=root):
+            return
+        update_state["busy"] = True
+        update_button.configure(text="Lade Update …", state="disabled")
+
+        def work():
+            try:
+                update_results.put(("prepared", self_update.prepare(label), True))
+            except Exception as error:
+                update_results.put(("error", str(error), True))
+        Thread(target=work, daemon=True).start()
+
+    def update_clicked():
+        install_update() if update_state["label"] else check_for_update(True)
+
+    update_button.configure(command=update_clicked)
+
+    def run_in_background(kind, job):
+        def work():
+            try:
+                update_results.put((kind, job(), True))
+            except Exception as error:  # nie das Dashboard stoeren
+                update_results.put(("tool-error", str(error), True))
+        Thread(target=work, daemon=True).start()
+
+    def system_check():
+        notify("Systemprüfung läuft …", "info")
+        run_in_background("health", lambda: diagnostics.health(config, ROOT / "production"))
+
+    def make_report():
+        target = filedialog.asksaveasfilename(
+            parent=root, title="Fehlerbericht speichern", defaultextension=".zip",
+            initialfile=time.strftime("Fehlerbericht-%Y%m%d-%H%M.zip"), filetypes=[("ZIP-Datei", "*.zip")])
+        if target:
+            run_in_background("report", lambda: diagnostics.build_report(target, config, ROOT / "production"))
+
+    help_menu = tk.Menu(nav, tearoff=0)
+    help_menu.add_command(label="Systemprüfung …", command=system_check)
+    help_menu.add_command(label="Fehlerbericht erstellen …", command=make_report)
+    help_button = ttk.Menubutton(nav, text="Hilfe", menu=help_menu)
+    help_button.pack(side="right", padx=(0, theme.PAD_BUTTON))
+
+    def handle_update_result(kind, data, manual):
+        if kind == "health":
+            worst = diagnostics.summary(data)
+            title = {"ok": "Alles in Ordnung", "warn": "Systemprüfung: Hinweise", "fail": "Systemprüfung: Probleme"}[worst]
+            show = messagebox.showinfo if worst == "ok" else messagebox.showwarning
+            show(title, diagnostics.as_text(data), parent=root)
+            return
+        if kind == "report":
+            messagebox.showinfo("Fehlerbericht", f"Der Bericht ist gespeichert:\n{data}\n\nDarin stehen Version, Systemprüfung "
+                                "und die letzten Zeilen der Protokolle. Passwörter und dein Benutzername sind entfernt.",
+                                parent=root)
+            return
+        if kind == "tool-error":
+            messagebox.showerror("Hilfe", data, parent=root)
+            return
+        update_state["busy"] = False
+        update_button.configure(state="normal")
+        if kind == "error":
+            update_button.configure(text="Update verfügbar: " + update_state["label"] if update_state["label"]
+                                    else "Nach Updates suchen")
+            if manual:
+                messagebox.showerror("Update", data, parent=root)
+            return
+        if kind == "prepared":
+            try:
+                self_update.start(data)
+            except self_update.UpdateError as error:
+                messagebox.showerror("Update", str(error), parent=root)
+                return
+            root.destroy()
+            return
+        installed, latest, available = data
+        if available:
+            update_state["label"] = latest
+            update_button.configure(text=f"Update verfügbar: {latest}")
+            notify(f"Update {latest} ist verfügbar – oben rechts auf „Update verfügbar“ klicken.", "warning")
+        else:
+            update_state["label"] = ""
+            update_button.configure(text="Nach Updates suchen")
+            if manual:
+                messagebox.showinfo("Update", f"VODWerft ist aktuell (Update {installed or 'unbekannt'}).", parent=root)
+
+    def drain_updates():
+        try:
+            while True:
+                handle_update_result(*update_results.get_nowait())
+        except Empty:
+            pass
+        try:
+            root.after(500, drain_updates)
+        except tk.TclError:
+            pass
+
+    def periodic_update_check():
+        check_for_update(False)
+        root.after(6 * 3600 * 1000, periodic_update_check)
+
+    root.after(500, drain_updates)
+    root.after(6000, periodic_update_check)
     if config.get("status_page_url"):  # optional: Link auf eine eigene Statusseite (z. B. fuers Handy)
         ttk.Button(nav, text="Handy-Status öffnen",
                    command=lambda: webbrowser.open(config["status_page_url"])).pack(side="right")
     change_page(frame)
-    ttk.Label(frame, text="VODWERFT  /  VIDEO-PIPELINE", style="Brand.TLabel").pack(anchor="w")
-    ttk.Label(frame, text=("Nightcut " + nightcut_version()).strip(), style="Title.TLabel").pack(anchor="w")
+    base = f"  ·  BASIS NIGHTCUT {nightcut_version()}" if nightcut_version() else ""
+    ttk.Label(frame, text="VODWERFT  /  VIDEO-PIPELINE" + base, style="Brand.TLabel").pack(anchor="w")
+    ttk.Label(frame, text=("VODWerft " + program_version_full()).replace(" unbekannt", "").strip(), style="Title.TLabel").pack(anchor="w")
     server_line = ttk.Label(frame, text="", style="Muted.TLabel")
     server_line.pack(anchor="w", pady=(2, 0))
     server_colors = {"ok": colors["success"], "direct": muted, "unknown": colors["warning"],
@@ -789,6 +1019,7 @@ def main():
     refresh()
     root.after(300, poll)
     root.after(400, control)
+    root.deiconify()
     root.mainloop()
 
 
@@ -846,7 +1077,7 @@ def run_tray():
         while icon.visible:
             server = read_json(work / "server-status.json", {})
             mark = "" if server.get("state") in ("ok", "direct", None) else " ▲Server"
-            icon.title = ("VODWerft " + program_version() + " · " + status() + mark)[:127]
+            icon.title = ("VODWerft " + program_version_full() + " · " + status() + mark)[:127]
             time.sleep(5)
 
     with Image.open(ICON) as image:

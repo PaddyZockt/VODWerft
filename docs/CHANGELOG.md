@@ -4,6 +4,20 @@ Versions follow [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`. While the nu
 
 Versionen folgen [SemVer](https://semver.org/lang/de/): `MAJOR.MINOR.PATCH`. Solange die Zahl mit `0.` beginnt, kann sich noch etwas ändern. PC und Server müssen dieselbe MAJOR-Version haben, bei `0.x` zusätzlich dieselbe MINOR-Version.
 
+## 0.1.0-beta.5
+
+**English**
+- **Automatic updates:** VODWerft checks GitHub for a newer release at start and every six hours, and the new "Check for updates" button does it on demand. When one exists, the button changes to "Update available" and one click downloads and installs it (checksum is verified; nothing is installed without your confirmation). Updating from beta.4 to beta.5 still has to be done by hand because beta.4 does not have this feature yet.
+- **Help menu:** "System check" shows at a glance whether ffmpeg, Ollama, graphics card, free disk space, input folder, background services and server are fine. "Create error report" packs version, check result and the latest log lines into one ZIP you can send to someone. Passwords, tokens and your Windows user name are removed.
+- **Server:** the example `docker-compose.yml` used an image tag (`0.1`) that does not exist for beta versions, so `docker compose up` failed with "manifest unknown". It now uses `latest`. Tested on ARM64 (Orange Pi, Docker 29).
+- Manual: you need your own Google project for automatic uploads (steps in chapter 5).
+
+**Deutsch**
+- **Automatische Updates:** VODWerft sucht beim Start und alle sechs Stunden auf GitHub nach einer neueren Version, und der neue Knopf „Nach Updates suchen“ tut das auf Wunsch. Gibt es eine, steht dort „Update verfügbar“, und ein Klick lädt und installiert sie (die Prüfsumme wird kontrolliert, ohne deine Bestätigung wird nichts installiert). Das Update von beta.4 auf beta.5 musst du noch von Hand machen, weil beta.4 die Funktion noch nicht hat.
+- **Menü „Hilfe“:** Die „Systemprüfung“ zeigt auf einen Blick, ob ffmpeg, Ollama, Grafikkarte, freier Speicherplatz, Eingangsordner, Hintergrunddienste und Server in Ordnung sind. „Fehlerbericht erstellen“ packt Version, Prüfergebnis und die letzten Protokollzeilen in eine ZIP-Datei, die du weitergeben kannst. Passwörter, Tokens und dein Windows-Benutzername werden entfernt.
+- **Server:** Die Beispiel-`docker-compose.yml` nutzte einen Image-Tag (`0.1`), den es bei Beta-Versionen nicht gibt, deshalb scheiterte `docker compose up` mit „manifest unknown“. Jetzt steht dort `latest`. Auf ARM64 getestet (Orange Pi, Docker 29).
+- Handbuch: Für den automatischen Upload brauchst du ein eigenes Google-Projekt (Schritte in Kapitel 5).
+
 ## 0.1.0-beta.4
 
 **English**

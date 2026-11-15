@@ -109,4 +109,4 @@ def make_thumbnail(video, target, series, number, *, frame_times=None, mission=N
     frame.save(temp, format="JPEG", quality=89, optimize=True)
     if not 0 < temp.stat().st_size <= 2_000_000:
         raise ValueError("Thumbnail exceeds the upload size limit")
-    temp.rename(target)
+    temp.replace(target)
