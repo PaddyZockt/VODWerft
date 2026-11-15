@@ -34,7 +34,8 @@ from retention import write
 from dashboard_data import (  # noqa: F401 - einige Namen bleiben hier für ältere Aufrufer erreichbar
     CUTS, EMPTY_TEXT, GROUPS, UPLOAD, UPLOAD_REASON, cleanup_view, correction, counts_text, describe,
     done_by_game, episode_number, episode_updates, file_activity, grouped, parse_local_date, percent,
-    phase_engine, preferred, problem, progress_detail, read_json, set_log_file, snapshot, timestamp)
+    phase_engine, preferred, problem, progress_detail, read_json, set_log_file, snapshot, timestamp,
+    clock_time)
 
 if getattr(sys, "frozen", False):
     # Gebaute exe: liegt im Datenordner, die Programmdateien sind darin gebuendelt.
@@ -433,7 +434,7 @@ def main():
                 events.append((event.get("time", 0), UPLOAD.get(event.get("status"), "Upload"),
                                f"Folge {number} · {UPLOAD_REASON.get(reason, reason) or 'YouTube'}"))
         for stamp, step, detail_text in sorted(events, reverse=True):
-            listing.insert("", "end", values=(timestamp(stamp), step, detail_text))
+            listing.insert("", "end", values=(clock_time(stamp), step, detail_text))
         if not events:
             listing.insert("", "end", values=("", row.detail, "Für diesen Auftrag liegt kein älterer Verlauf vor."))
 

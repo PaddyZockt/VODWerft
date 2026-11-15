@@ -177,6 +177,15 @@ def timestamp(seconds):
     return f"{hours}:{minutes:02}:{seconds:02}"
 
 
+def clock_time(epoch):
+    """Datum und Uhrzeit (Ortszeit) eines Zeitstempels, z. B. 15.11. 18:25:38. Leer bei ungültigem Wert."""
+    from datetime import datetime
+    try:
+        return datetime.fromtimestamp(float(epoch)).strftime("%d.%m. %H:%M:%S")
+    except (OverflowError, OSError, ValueError, TypeError):
+        return ""
+
+
 def phase_engine(detail):
     phase = detail.casefold()
     if "transkrib" in phase or "gesprächspassagen" in phase:

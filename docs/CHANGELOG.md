@@ -4,6 +4,14 @@ Versions follow [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`. While the nu
 
 Versionen folgen [SemVer](https://semver.org/lang/de/): `MAJOR.MINOR.PATCH`. Solange die Zahl mit `0.` beginnt, kann sich noch etwas ändern. PC und Server müssen dieselbe MAJOR-Version haben, bei `0.x` zusätzlich dieselbe MINOR-Version.
 
+## Unreleased / Noch nicht veröffentlicht
+
+**English**
+- The job history window now shows date and time (e.g. "15.11. 18:25:38") instead of a wrongly formatted number.
+
+**Deutsch**
+- Das Verlaufsfenster zeigt jetzt Datum und Uhrzeit (z. B. „15.11. 18:25:38“) statt einer falsch formatierten Zahl.
+
 ## 0.1.0-beta.3
 
 **English**
