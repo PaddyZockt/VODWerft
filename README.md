@@ -14,6 +14,8 @@
   <a href="https://github.com/PaddyZockt/VODWerft/issues/new"><img alt="Feedback" src="https://img.shields.io/badge/Feedback-Open_an_issue-8957e5?style=for-the-badge"></a>
 </p>
 
+💬 **Community & Support:** [Join the VOD-Werft area on Discord](https://discord.paddyzockt.fun) (pick the VOD-Werft role in #rollen-wahl)
+
 
 > **0.1.0-beta.5 · Beta to try out.** The Windows installer is available and runs on Windows 11 with an NVIDIA GPU. It is **not code-signed yet**, so Windows shows a warning (see below). It has had little testing on fresh machines. Please report problems as an issue.
 
