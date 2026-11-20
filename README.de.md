@@ -17,7 +17,7 @@
 💬 **Community & Support:** [VOD-Werft-Bereich auf Discord beitreten](https://discord.paddyzockt.fun) (Rolle VOD-Werft in #rollen-wahl auswählen)
 
 
-> **0.1.0-beta.5 · Beta zum Ausprobieren.** Der Windows-Installer ist da und läuft auf Windows 11 mit NVIDIA-Grafikkarte. Er ist noch **nicht digital signiert**, Windows zeigt deshalb eine Warnung (siehe unten). Auf frischen Rechnern ist er noch wenig getestet. Fehler bitte als Issue melden.
+> **0.1.0-beta.6 · Beta zum Ausprobieren.** Der Windows-Installer ist da und läuft auf Windows 11 mit NVIDIA-Grafikkarte. Er ist noch **nicht digital signiert**, Windows zeigt deshalb eine Warnung (siehe unten). Auf frischen Rechnern ist er noch wenig getestet. Fehler bitte als Issue melden.
 
 ## So funktioniert der Ablauf
 
@@ -37,6 +37,7 @@ Der Windows-PC bearbeitet das Material. Der Upload läuft entweder **direkt vom 
 - Schnitt in Folgen oder eine ganze Mission als ein Video, mit Titel, Beschreibung und Vorschaubild.
 - Aufnahmeprofile pro Spiel (Bibliothek mit Beispielen oder eigener Name), Folgenlänge und Veröffentlichungstage einstellbar.
 - Tray-Symbol mit Status, Dashboard und Einrichtungsassistent.
+- Optional: Schnittplan von Hand prüfen, Übergänge an Schnitten, laufenden Auftrag stoppen, Restzeit pro Schritt.
 - **Sicher voreingestellt:** Nichts wird hochgeladen, bevor du es freigibst. Jede Folge wartet auf deine Freigabe.
 - **Manuell hochladen (ohne Google-Projekt):** VODWerft bereitet Video, Titel, Beschreibung und Vorschaubild vor und öffnet YouTube Studio. Du ziehst die Datei selbst hinein.
 - Automatischer Upload zu YouTube mit Zeitplan, direkt vom PC oder über den Docker-Server (braucht ein eigenes Google-Projekt).

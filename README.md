@@ -17,7 +17,7 @@
 💬 **Community & Support:** [Join the VOD-Werft area on Discord](https://discord.paddyzockt.fun) (pick the VOD-Werft role in #rollen-wahl)
 
 
-> **0.1.0-beta.5 · Beta to try out.** The Windows installer is available and runs on Windows 11 with an NVIDIA GPU. It is **not code-signed yet**, so Windows shows a warning (see below). It has had little testing on fresh machines. Please report problems as an issue.
+> **0.1.0-beta.6 · Beta to try out.** The Windows installer is available and runs on Windows 11 with an NVIDIA GPU. It is **not code-signed yet**, so Windows shows a warning (see below). It has had little testing on fresh machines. Please report problems as an issue.
 
 ## How it works
 
@@ -37,6 +37,7 @@ The Windows PC does the media work. Uploading runs either **directly from the PC
 - Cuts into episodes or keeps a whole mission as one video, with title, description and thumbnail.
 - Recording profiles per game (library with examples or your own name); episode length and publishing weekdays are configurable.
 - Tray icon with status, dashboard and setup assistant.
+- Optional: review the cut plan by hand, transitions at cuts, stop a running job, remaining time per step.
 - **Safe defaults:** nothing is uploaded before you approve it. Every episode waits for your approval.
 - **Manual upload (no Google project):** VODWerft prepares video, title, description and thumbnail and opens YouTube Studio. You drag the file in yourself.
 - Automatic upload to YouTube with a schedule, directly from the PC or through the Docker server (needs your own Google project).
