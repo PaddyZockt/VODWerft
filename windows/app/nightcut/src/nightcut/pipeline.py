@@ -18,7 +18,8 @@ import numpy as np
 from rich.console import Console
 
 from . import gpus  # first: sets CUDA_DEVICE_ORDER before PyTorch is loaded
-from . import costs, editor, export_xmeml, killfeed, metadata, shorts, signals, story, summary, thumbnails, tracks, vision
+from . import costs, editor, export_xmeml, judge, killfeed, metadata, shorts, signals, story, summary, thumbnails, tracks, vision
+from . import llm, workdir
 from . import layout as layout_detect
 from .media import extract_audio_tracks, load_pcm, probe
 from .render import render_clip
@@ -99,7 +100,7 @@ def _vram_text(stage: dict) -> str:
 
 class Run:
     def __init__(self, source: Path, cfg: dict, force: set[str] | None = None, name: str | None = None,
-                 use_gpus: str | None = None):
+                 use_gpus: str | None = None, sources: list[Path] | None = None, mode: str = "highlights"):
         self.source = source
         self.cfg = cfg
         self.use_gpus = use_gpus  # "auto" or a number of GPUs (overrides gpus.use in the config)
@@ -108,10 +109,23 @@ class Run:
         self._split: dict[str, list[int]] = {"killfeed": [], "vision": []}  # model calls per GPU
         self.force = force or set()
         self._dirty = False  # once a stage re-runs, everything after it must re-run too
-        self.work = Path(os.path.abspath(cfg["output_dir"])) / (name or source.stem)
+        # A folder of another run (other recording, settings or nightcut version) is never reused.
+        project = workdir.fingerprint(sources or [source], cfg, mode)
+        if cfg.get("workdir_fixed"):
+            # VODWerft/VODWerft: the program gives every job its own output folder (job key, batch-identity.json)
+            # and expects the files in <output>/<name>. So the folder is never renamed to <name>_2, even after a
+            # nightcut update or when a job is resumed (e.g. waiting for "Plan prüfen").
+            self.work, note = Path(os.path.abspath(cfg["output_dir"])) / (name or source.stem), ""
+        else:
+            self.work, note = workdir.choose(Path(os.path.abspath(cfg["output_dir"])), name or source.stem, project,
+                                             forced=bool(self.force))
+        if note:
+            console.print(f"[yellow]{note}[/yellow]", soft_wrap=True)
         self.work.mkdir(parents=True, exist_ok=True)
         self.log_path = self.work / "run.json"
-        self.log = json.loads(self.log_path.read_text(encoding="utf-8")) if self.log_path.exists() else {"stages": {}}
+        self.log = workdir.read_log(self.work) or {"stages": {}}
+        self.log["project"] = project
+        self.log_path.write_text(json.dumps(self.log, indent=2), encoding="utf-8")
         self.pricing = costs.load_pricing(Path(cfg["pricing_file"]) if cfg.get("pricing_file") else None)
 
     # -- helpers -------------------------------------------------------------
@@ -124,12 +138,27 @@ class Run:
     def _save(self, name: str, data) -> None:
         self._json(name).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def _cached(self, name: str, target: str | None = None):
+        """The saved result of a finished stage, or None if the stage has to run (again): not done
+        yet, forced, a stage before it ran again, or files it made are no longer in the folder."""
+        target = target or name
+        if not self._json(target).exists() or name in self.force or self._dirty:
+            return None
+        result = self._load(target)
+        gone = workdir.missing_files(result, self.work)
+        if gone:
+            console.print(f"[yellow]{name}: {len(gone)} file(s) of this stage are gone (e.g. {gone[0].name}), "
+                          "making it again[/yellow]")
+            return None
+        console.print(f"[dim]✓ {name} (cached)[/dim]")
+        return {"result": result}
+
     def _stage(self, name: str, fn, *, cached_file: str | None = None):
         """Run fn unless its result already exists; record wall time and VRAM peak."""
         target = cached_file or name
-        if self._json(target).exists() and name not in self.force and not self._dirty:
-            console.print(f"[dim]✓ {name} (cached)[/dim]")
-            return self._load(target)
+        cached = self._cached(name, target)
+        if cached:
+            return cached["result"]
         self._dirty = True
         console.print(f"[bold cyan]▶ {name}[/bold cyan]")
         costs.usage.reset()
@@ -157,9 +186,9 @@ class Run:
         """
         results, todo = {}, []
         for name, fn in specs:
-            if self._json(name).exists() and name not in self.force and not self._dirty:
-                console.print(f"[dim]✓ {name} (cached)[/dim]")
-                results[name] = self._load(name)
+            cached = self._cached(name)
+            if cached:
+                results[name] = cached["result"]
             else:
                 todo.append((name, fn))
         if not todo:
@@ -427,20 +456,59 @@ class Run:
         total = sum(c["end"] - c["start"] for c in edit["clips"])
         console.print(f"  {len(edit['clips'])} clips, {total / 60:.1f} min")
 
+        # clip judge (VODWerft/VODWerft): the local model rates the strongest candidates for story and fun,
+        # the Shorts are chosen from that. A failure is never fatal: the score-based pick stays.
+        judged, jcfg = None, judge.settings(cfg)
+        if cfg["shorts"]["enabled"] and jcfg["enabled"] and segments:
+            if self._json("judge").exists() and self._load("judge").get("signature") != judge.signature(cfg, candidates):
+                self.force.add("judge")  # other criteria, model or candidates: judge again
+
+            def do_judge():
+                return judge.run(candidates, segments, cfg,
+                                 progress=lambda d, n: console.print(f"  judge {d}/{n}", end="\r"))
+            was_dirty = self._dirty
+            try:
+                judged = self._stage("judge", do_judge)
+                if self._dirty and not was_dirty:
+                    # Nur die Shorts hängen vom Richter ab: Clips und Metadaten (Titel, Beschreibung) nicht neu machen
+                    self._dirty = False
+                    self.force.add("shorts")
+            except llm.OllamaError:
+                raise
+            except Exception as exc:
+                console.print(f"[yellow]  clip judge failed, Shorts by score: {exc}[/yellow]")
+            if judged and judged.get("failed", 0) > len(judged["items"]):
+                console.print("[yellow]  clip judge: most answers unusable, Shorts by score[/yellow]")
+                judged = None
+
         def do_render():
             out = self.work / "media"
             out.mkdir(exist_ok=True)
             jobs = list(enumerate(edit["clips"], 1))
             # one encoder per GPU of this run (with one GPU: the default encoder)
             encoders = [self._gpu(i) for i in range(max(1, len(self.gpu_list)))]
+            console.print(f"  render 0/{len(jobs)}", end="\r")  # "x von y" in the status (status card)
             return gpus.parallel_map(jobs, encoders, lambda job, gpu: render_clip(info, job[1], job[0], timeline_audio,
-                                                                                   cfg, out, gpu=gpu))
+                                                                                   cfg, out, gpu=gpu),
+                                     progress=lambda d, n: console.print(f"  render {d}/{n}", end="\r"))
 
         def do_shorts():
             out = self.work / "shorts"
             out.mkdir(exist_ok=True)
+            for old in out.glob("short_*"):  # Reste eines früheren Laufs (anderer Richter, weniger Clips) nicht mitliefern
+                if old.suffix in (".mp4", ".ass", ".xml"):
+                    old.unlink(missing_ok=True)
             gpu = self._gpu(1)  # 2 GPUs: Whisper and encoder on the second card
-            picked = shorts.pick(edit["clips"], cfg["shorts"]["count"], cfg["shorts"]["min_s"])
+            picked = judge.pick(judged, candidates, cfg["shorts"]["count"], cfg["shorts"]["min_s"], jcfg)
+            if picked is None:  # no usable judgement: the old score-based pick
+                picked = shorts.pick(edit["clips"], cfg["shorts"]["count"], cfg["shorts"]["min_s"])
+            else:
+                (self.work / "judge.md").write_text(judge.report(judged, candidates, picked), encoding="utf-8")
+                console.print(f"  Shorts chosen by the judge: {len(picked)} of {cfg['shorts']['count']}")
+                if not picked:
+                    console.print("[yellow]  no clip was good enough for a Short (see judge.md)[/yellow]")
+                    return []
+            single = shorts.separate_tracks(timeline_audio, cfg["shorts"])  # behind the finished mix, for the edit
             pcm = load_pcm(Path(pcm_paths["mic"]))
             asr = load_asr({**cfg["transcribe"], **({"device": gpu} if gpu is not None else {})})
             words = [shorts.word_timestamps(pcm, sr, c["start"], c["start"] + min(c["end"] - c["start"],
@@ -449,11 +517,18 @@ class Run:
             gc.collect()
             free_vram()
             result = []
+            console.print(f"  shorts 0/{len(picked)}", end="\r")
             for n, (c, w) in enumerate(zip(picked, words), 1):
                 ass = out / f"short_{n:02d}.ass"
                 shorts.write_ass(w, ass, cfg["shorts"], shorts.caption_y(cfg))
-                path = shorts.render(info, c, n, streams, ass, cfg, out, gpu=gpu)
-                result.append({"file": str(path), "title": c.get("title", ""), "source_start": c["start"]})
+                path = shorts.render(info, c, n, streams, ass, cfg, out, gpu=gpu, tracks=single)
+                made = {"file": str(path), "title": c.get("title", ""), "source_start": c["start"],
+                        **({"judge": c["judge"], "reason": c.get("reason", "")} if c.get("judge") else {})}
+                if single:
+                    made["timeline"] = str(shorts.write_timeline(path, n, c.get("title", ""), single, cfg,
+                                                                 f"{self.source.stem} Short {n:02d}"))
+                result.append(made)
+                console.print(f"  shorts {n}/{len(picked)}", end="\r")
             return result
 
         def do_metadata():

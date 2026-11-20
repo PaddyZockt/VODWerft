@@ -8,6 +8,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from bundle import enqueue, job_name, read_metadata
+from transitions import KINDS as TRANSITIONS, HART, is_seam, piece_filters
 
 ENCODERS = ("auto", "h264_nvenc", "libx264")
 
@@ -37,7 +38,7 @@ def duration(path):
 
 
 def render(manifest, episode, sources, audio_track, target, encoder, trim_start=0, resume_work=None,
-           mix_tracks=()):
+           mix_tracks=(), transition=HART):
     eps = json.loads(manifest.read_text(encoding="utf-8"))
     matches = [ep for ep in eps if ep["n"] == episode]
     if len(matches) != 1 or not matches[0]["pieces"]:
@@ -61,12 +62,19 @@ def render(manifest, episode, sources, audio_track, target, encoder, trim_start=
         print(f"Vorspann bis {trim_start:.3f} s der Aufnahme entfernt", flush=True)
 
     base = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-n"]
-    audio_map = ["-map", f"0:a:{audio_track}"]
+    if transition not in TRANSITIONS:
+        raise ValueError("Unknown transition")
+    graph = None
     if mix_tracks:
         inputs = "".join(f"[0:a:{index}]" for index in mix_tracks)
         graph = (f"{inputs}amix=inputs={len(mix_tracks)}:normalize=0:dropout_transition=0,"
-                 "alimiter=limit=0.95:level=0:latency=1[mixed]")
-        audio_map = ["-filter_complex", graph, "-map", "[mixed]"]
+                 "alimiter=limit=0.95:level=0:latency=1")
+
+    def audio_map(fade=""):
+        """Ton eines Teils; `fade` ist die Ton-Überblendung für Übergänge (leer bei hartem Schnitt)."""
+        if graph:
+            return ["-filter_complex", f"{graph}{fade}[mixed]", "-map", "[mixed]"]
+        return ["-map", f"0:a:{audio_track}"] + (["-af", fade.lstrip(",")] if fade else [])
     videos = [source_info[index][1] for index in {piece["file"] for piece in pieces}]
     width, height = (2560, 1440) if all(v["width"] >= 2560 and v["height"] >= 1440 for v in videos) else (1920, 1080)
     print(f"Exportauflösung: {width} × {height}", flush=True)
@@ -111,6 +119,13 @@ def render(manifest, episode, sources, audio_track, target, encoder, trim_start=
             print(f"Rendern: Teil {n} von {len(pieces)}", flush=True)
             segment = work / f"segment-{n:06d}.mp4"
             length = piece["end"] - piece["start"]
+            # Übergang: Effekt am Anfang/Ende des Teils, Länge des Teils bleibt gleich (keine Überlappung)
+            # (an reinen Dateiwechseln ohne Schnitt, z. B. OBS-Teildateien, gibt es keinen Übergang)
+            durations = {index: info[0] for index, info in enumerate(source_info)}
+            seam_before = n > 1 and is_seam(pieces[n - 2], piece, durations)
+            seam_after = n < len(pieces) and is_seam(piece, pieces[n], durations)
+            fade_video, fade_audio = piece_filters(transition, n, len(pieces), length, (width, height),
+                                                   seam_before, seam_after)
             if resume_work is not None and segment.is_file():
                 try:
                     actual, stream = probe_video(segment)
@@ -134,8 +149,8 @@ def render(manifest, episode, sources, audio_track, target, encoder, trim_start=
             subprocess.run(base + [
                 "-stats_period", "2", "-progress", str(telemetry),
                 "-ss", f'{piece["start"]:.3f}', "-i", str(sources[piece["file"]]),
-                "-t", f"{length:.3f}", "-map", "0:v:0", *audio_map,
-                "-vf", video_filter, "-r", "60", "-c:v", encoder, *encode,
+                "-t", f"{length:.3f}", "-map", "0:v:0", *audio_map(fade_audio),
+                "-vf", video_filter + fade_video, "-r", "60", "-c:v", encoder, *encode,
                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
                 "-b:a", "192k", str(segment),
             ], check=True)
@@ -171,12 +186,14 @@ def main():
     parser.add_argument("--encoder", choices=ENCODERS, default="h264_nvenc")
     parser.add_argument("--trim-start", type=float, default=0, help="Start of the episode in source seconds")
     parser.add_argument("--thumbnail", type=Path)
+    parser.add_argument("--transition", choices=TRANSITIONS, default=HART, help="Übergang an den Schnitten der Folge")
     parser.add_argument("--incoming", type=Path, help="Publish the complete package to this queue")
     args = parser.parse_args()
     read_metadata(args.metadata, allow_publish=True)
     if args.output.suffix != ".mp4" or not job_name.fullmatch(args.output.stem):
         parser.error("--output must be a new .mp4 with a simple, unique name")
-    render(args.manifest, args.episode, args.source, args.audio_track, args.output, args.encoder, args.trim_start)
+    render(args.manifest, args.episode, args.source, args.audio_track, args.output, args.encoder, args.trim_start,
+           transition=args.transition)
     print(f"MP4 geprüft: {args.output}")
     if args.incoming:
         print(enqueue(args.output, args.metadata, args.incoming, thumbnail=args.thumbnail))

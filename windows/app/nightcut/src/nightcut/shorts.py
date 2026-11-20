@@ -1,4 +1,9 @@
-"""Render vertical Shorts: facecam on top, gameplay below, word-by-word captions."""
+"""Render vertical Shorts: facecam on top, gameplay below, word-by-word captions.
+
+A Short is ready to upload: its first audio track is the finished mix. Behind it the file
+carries the single tracks of the recording, and a small timeline next to it puts them on
+separate tracks, so the sound can still be balanced in the editor, like in the main timeline.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +19,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from .media import AudioStream, MediaInfo, crop_filter, encoder_options, ffmpeg_filters, run
+from . import export_xmeml
+from .media import AudioStream, MediaInfo, crop_filter, encoder_options, ffmpeg_filters, probe, run
+from .tracks import TimelineTrack
 
 W, H = 1080, 1920
 
@@ -72,6 +79,41 @@ def pick(clips: list[dict], count: int, min_s: float) -> list[dict]:
     """Strongest clips of the edit, best first."""
     usable = [c for c in clips if c["end"] - c["start"] >= min_s]
     return sorted(usable, key=lambda c: c.get("final_score", c["score"]), reverse=True)[:count]
+
+
+def separate_tracks(audio: list[TimelineTrack], scfg: dict) -> list[TimelineTrack]:
+    """The single tracks a Short carries behind its finished mix (`shorts.separate_audio`).
+    The mix track of the recording is left out, the Short has its own. A recording with one
+    track only has nothing to balance: the Short stays a file with one audio track."""
+    if not scfg.get("separate_audio", True):
+        return []
+    single = [t for t in audio if not t.muted]
+    return single if len(single) > 1 else []
+
+
+def _audio_outputs(tracks: list[TimelineTrack]) -> list[str]:
+    """ffmpeg options for the audio of a Short: the finished mix first and marked as default
+    (players and upload sites take that one), then the single tracks, named like in the timeline."""
+    args = ["-map", "[a]"]
+    if not tracks:
+        return args
+    for pos, label in enumerate(["MIX"] + [t.label for t in tracks]):
+        if pos:
+            args += ["-map", f"0:{tracks[pos - 1].stream.index}"]
+        args += [f"-metadata:s:a:{pos}", f"title={label}", f"-metadata:s:a:{pos}", f"handler_name={label}",
+                 f"-disposition:a:{pos}", "default" if pos == 0 else "0"]
+    return args
+
+
+def write_timeline(short: Path, n: int, title: str, tracks: list[TimelineTrack], cfg: dict, name: str) -> Path:
+    """Timeline for one Short (`short_01.xml` next to `short_01.mp4`): the single tracks on separate
+    audio tracks, the finished mix on the first one but switched off, so nothing sounds twice."""
+    info = probe(short)
+    labels = ["MIX"] + [t.label for t in tracks]
+    audio = [TimelineTrack(s, label, muted=pos == 0) for pos, (s, label) in enumerate(zip(info.audio, labels))]
+    clip = {"n": n, "title": title or "Short", "start": 0.0, "end": info.duration, "trim_in": 0.0,
+            "gameplay_file": str(short), "facecam_file": None}
+    return export_xmeml.write([clip], audio, cfg, short.with_suffix(".xml"), name)
 
 
 def word_timestamps(pcm: np.ndarray, sample_rate: int, start: float, end: float, cfg: dict, asr) -> list[dict]:
@@ -393,7 +435,8 @@ def _png_caption_video(ass: Path, scfg: dict, duration: float) -> Path:
 
 
 def render(info: MediaInfo, clip: dict, n: int, streams: dict[str, AudioStream], ass: Path, cfg: dict,
-           out_dir: Path, gpu: int | None = None) -> Path:
+           out_dir: Path, gpu: int | None = None, tracks: list[TimelineTrack] | None = None) -> Path:
+    """streams: what goes into the finished mix. tracks: single tracks kept behind it (see separate_tracks)."""
     scfg = cfg["shorts"]
     out = out_dir / f"short_{n:02d}.mp4"
     start = clip["start"]
@@ -429,7 +472,7 @@ def render(info: MediaInfo, clip: dict, n: int, streams: dict[str, AudioStream],
     if caption_video:
         inputs += ["-i", str(caption_video)]
     run(["ffmpeg", "-hide_banner", "-v", "error", "-y", *inputs,
-         "-filter_complex", graph, "-map", "[v]", "-map", "[a]",
+         "-filter_complex", graph, "-map", "[v]", *_audio_outputs(tracks or []),
          *encoder_options(cfg["render"]["codec"], 20, gpu, cfg["render"].get("video_bitrate")),
          "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(out)])
     return out

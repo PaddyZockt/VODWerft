@@ -31,6 +31,14 @@ from export_episode import video_info
 from release_slots import read_manual, reserve
 from obs_audio import split_audio
 from job_cleanup import reconcile as reconcile_cleanup
+import clip_criteria
+import clip_migration
+import disk_space
+import job_stop
+import library_names
+import youtube_fields
+from transitions import effective as effective_transition
+from plan_status import STATUS_WAITING, PENDING_EXIT_CODE, PlanReviewPending, is_confirmed, review_enabled
 from run_letsplay import lock_output
 from series_numbers import initialize
 from status_report import CHECKSUM_STATUS, publish
@@ -133,6 +141,8 @@ def effective_clips_config(config, clips_config, output):
         data.setdefault("thumbnails", {})
         if isinstance(data["thumbnails"], dict):
             data["thumbnails"].update(sanitize_theme(theme))
+    clip_criteria.apply(data, config)  # was ein guter Short ist: Profil, sonst Spielbibliothek, sonst Standard
+    data["workdir_fixed"] = True  # fester Ordner pro Auftrag, siehe run_letsplay.py
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     return atomic_write(output / "clips-effective.yaml", yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
@@ -145,6 +155,14 @@ def python_executable():
 
 def run_job(config, source, key, db):
     output = Path(config["work"]) / key
+    # Vor dem Rendern: reicht der Platz? Nur eine Warnung (Verlauf des Auftrags und Protokoll), der Auftrag läuft weiter.
+    try:
+        low = disk_space.warning(config["work"], Path(source).stat().st_size)
+    except OSError:
+        low = None
+    if low:
+        print(f"{key}: {low}", flush=True)
+        record(db, key, "Wenig Speicherplatz", low)
     ensure_ollama(config)
     command = [
         str(python_executable()), "-X", "utf8", "-B", "-u",
@@ -162,6 +180,11 @@ def run_job(config, source, key, db):
         command.extend(["--description-template", config["description"]])
     if config.get("obs_split_audio"):
         command.append("--obs-split-audio")
+    if review_enabled(config):
+        command.append("--review-plan")
+    command.extend(["--transition", effective_transition(config)])
+    if config.get("kapitel") is False:
+        command.append("--no-chapters")  # nur im Missionsmodus wirksam; sonst gelten die Nightcut-Einstellungen
     if config.get("mission_export"):
         mission = mission_title(source)
         command.extend(["--mission", mission])
@@ -169,25 +192,19 @@ def run_job(config, source, key, db):
         if trim.is_file():
             command.extend(["--trim-start", str(mission_seconds(trim.read_text(encoding="utf-8-sig").strip()))])
     log = output.with_suffix(".log")
+    if job_stop.requested(config["work"], key):  # Stopp kam schon vor dem Start (z. B. beim Warten auf Ollama)
+        raise job_stop.JobStopped(key)
     with log.open("ab") as handle:
         with subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT,
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as child:
             attempted = set()
-            limit = job_timeout(config)
-            deadline = time.monotonic() + limit
-            while True:
-                try:
-                    code = child.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    if time.monotonic() >= deadline:
-                        child.kill()
-                        child.wait()
-                        raise subprocess.TimeoutExpired(command, limit) from None
-                    dispatch_rendered(db, config, output, attempted)
-                else:
-                    if code:
-                        raise subprocess.CalledProcessError(code, command)
-                    break
+            # Alle 5 Sekunden: Stopp gewünscht (JobStopped), Zeit abgelaufen (TimeoutExpired), sonst Folgen übergeben.
+            code = job_stop.wait_for(child, config["work"], key, job_timeout(config), command,
+                                     tick=lambda: dispatch_rendered(db, config, output, attempted))
+            if code == PENDING_EXIT_CODE and review_enabled(config):
+                raise PlanReviewPending(key)  # Plan prüfen: kein Fehler, der Auftrag wartet
+            if code:
+                raise subprocess.CalledProcessError(code, command)
             dispatch_rendered(db, config, output, attempted)
     if config.get("mission_export") and not config.get("upload_incoming"):
         target = Path(config["mission_export"]) / key
@@ -198,6 +215,53 @@ def run_job(config, source, key, db):
             for extension in (".mp4", ".jpg", ".json"):
                 shutil.copyfile(video.with_suffix(extension), pending / (source.stem + extension))
             pending.rename(target)
+
+
+def copy_clips(config, source, key, output, clips):
+    """Kopiert die fertigen Hochkant-Clips in den Sammelordner des Spiels, mit lesbaren Namen:
+    `Clips/<Spiel>/2026-11-20 19-42 [849370]/Clip 03 – Schiff explodiert.mp4`. Ein vorhandener Ordner dieses Auftrags
+    (auch mit dem alten Hash-Namen) wird weiterverwendet und umbenannt, damit bei einem neuen Versuch nichts doppelt liegt."""
+    root = Path(config["clips_output"])
+    label = None
+    try:
+        modified = source.stat().st_mtime
+    except OSError:
+        modified = None
+    wanted = root / library_names.free_folder_name(root, key, source.name, modified, label)
+    target = library_names.find_folder(root, key) or wanted
+    if target != wanted and not wanted.exists():
+        try:
+            target.rename(wanted)
+            target = wanted
+        except OSError:
+            pass  # bleibt unter dem bisherigen Namen: Hauptsache, die Clips kommen an
+    target.mkdir(parents=True, exist_ok=True)
+    library_names.claim(target, key)  # gleiche Kurzkennung bei einem anderen Auftrag: nie derselbe Ordner
+    titles = library_names.clip_titles(output)
+    listing = target / library_names.LIST_FILE
+    try:
+        previous = [str(name) for name in json.loads(listing.read_text(encoding="utf-8"))]
+    except (OSError, ValueError, TypeError):
+        previous = []
+    written = []
+    for clip in clips:
+        number = library_names.number_of(clip.name)
+        final = target / (library_names.clip_file_name(number, titles.get(clip.name)) if number else clip.name)
+        partial = final.with_suffix(".partial")
+        shutil.copyfile(clip, partial)
+        partial.replace(final)
+        written.append(final.name)
+        if final.name != clip.name:  # der alte Name aus der Zeit vor den lesbaren Namen (short_01.mp4) wird ersetzt
+            (target / clip.name).unlink(missing_ok=True)
+    # Nur Dateien entfernen, die der Watcher selbst abgelegt hat (frühere Läufe mit anderem Titel oder mehr Clips);
+    # alles, was du selbst in den Ordner gelegt hast, bleibt.
+    for name in previous:
+        if name not in written and Path(name).name == name:
+            (target / name).unlink(missing_ok=True)
+    try:
+        atomic_write(listing, json.dumps(written, ensure_ascii=False))
+    except OSError:
+        pass
 
 
 def run_clips(config, source, key):
@@ -214,20 +278,18 @@ def run_clips(config, source, key):
     ]
     log = output.with_suffix(".clips.log")
     caption_audio = "stems" if use_stems else "mixed" if known_layout else "default"
+    if job_stop.requested(config["work"], key):  # Stopp zwischen Export und Clips
+        raise job_stop.JobStopped(key)
     with log.open("ab") as handle:
-        subprocess.run(command, stdout=handle, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                       env={**os.environ, "NIGHTCUT_SHORTS_CAPTION_AUDIO": caption_audio},
-                       check=True, timeout=job_timeout(config),
-                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        with subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                              env={**os.environ, "NIGHTCUT_SHORTS_CAPTION_AUDIO": caption_audio},
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as child:
+            code = job_stop.wait_for(child, config["work"], key, job_timeout(config), command)
+            if code:
+                raise subprocess.CalledProcessError(code, command)
     clips = sorted((output / "highlights" / "shorts").glob("*.mp4"))
     if clips and config.get("clips_output"):
-        target = Path(config["clips_output"]) / key
-        target.mkdir(parents=True, exist_ok=True)
-        for clip in clips:
-            final = target / clip.name
-            partial = final.with_suffix(".partial")
-            shutil.copyfile(clip, partial)
-            partial.replace(final)
+        copy_clips(config, source, key, output, clips)
     print(f"{source.name}: {len(clips)} Hochkant-Clips", flush=True)
 
 
@@ -252,6 +314,16 @@ def apply_series_metadata(metadata, config, source, video):
             stamp = None
         if stamp and stamp <= date.today():
             metadata["recordingDate"] = stamp.isoformat()
+    # "Verwendung von KI": Nightcut schneidet und beschriftet nur, es erzeugt keine Inhalte. Standard: immer "Nein" angeben
+    # (Profil oder Einstellung "aus": nichts senden, dann beantwortet man die Frage in Studio selbst).
+    if config.get("ki_angabe", user_settings.KI_STANDARD) != "aus":
+        metadata["containsSyntheticMedia"] = False
+    # YouTube-Angaben des Spielprofils: Playlist (der Upload-Dienst ordnet das Video zu) und feste Tags
+    playlist = youtube_fields.playlist_id(config.get("youtube_playlist"))
+    if playlist:
+        metadata["playlistId"] = playlist
+    if isinstance(config.get("youtube_tags"), list) and config["youtube_tags"]:
+        metadata["tags"] = youtube_fields.merge_tags(config["youtube_tags"], metadata.get("tags"))
 
 
 def resume_handoff(db, target, episode):
@@ -337,9 +409,10 @@ def dispatch(db, profile, early_episode=None):
                 if slot:
                     metadata["publishAt"] = slot
             developer = game_developer(config["series"], config.get("developer"))
+            # Der Spielname steht immer dabei (die Bibliothek ordnet danach); den Beschreibungs-Fuss haengt der Server nur an,
+            # wenn auch ein Entwickler bekannt ist (bei freigegebenen Folgen schon geschehen).
+            metadata["_vodwerft_game"] = config["series"]
             if developer:
-                # Der Server haengt damit den Beschreibungs-Fuss an (bei freigegebenen Folgen schon geschehen).
-                metadata["_vodwerft_game"] = config["series"]
                 metadata["_vodwerft_developer"] = developer
             if gated:
                 metadata["_requires_date"] = not config.get("upload_private_only")
@@ -469,7 +542,13 @@ def scan(config, db, observations):
             with db:
                 db.execute("INSERT OR REPLACE INTO fingerprints VALUES (?,?,?,?,?)", (*fingerprint, key))
         old = db.execute("SELECT status FROM recordings WHERE key=?", (key,)).fetchone()
-        if old and old[0] not in ("processing", "retry", "awaiting_start"):
+        if old and old[0] == STATUS_WAITING:
+            if not is_confirmed(Path(config["work"]) / key):
+                # Wartet auf deine Bestätigung. Nicht als erledigt merken: sonst bemerkt der Watcher die
+                # Bestätigung erst nach einem Neustart.
+                continue
+            # Plan bestätigt: der Auftrag läuft unten weiter (Analyse kommt aus dem Zwischenspeicher)
+        elif old and old[0] not in ("processing", "retry", "awaiting_start"):
             if old[0] == "ready":
                 process_clips(recording_settings(config, key), db, source, key)
             observations[source] = (signature, since, True)
@@ -480,6 +559,8 @@ def scan(config, db, observations):
         job_config = recording_settings(config, key, save=True)
         trim = source.with_suffix(".start.txt")
         waiting = job_config.get("mission_export") and job_config.get("require_mission_start") and not trim.is_file()
+        if not waiting:
+            job_stop.clear(config["work"], key)  # eine alte Stopp-Anforderung gilt nicht für diesen neuen Start
         with db:
             db.execute("INSERT INTO recordings VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET status=excluded.status",
                        (key, str(source), "awaiting_start" if waiting else "processing"))
@@ -491,6 +572,17 @@ def scan(config, db, observations):
         print(f"Verarbeite {source.name}", flush=True)
         try:
             run_job(job_config, source, key, db)
+        except PlanReviewPending:
+            status = STATUS_WAITING
+            record(db, key, "Plan prüfen", "wartet auf Bestätigung")
+            print(f"{source.name}: wartet auf Plan prüfen", flush=True)
+        except job_stop.JobStopped:
+            # Vom Nutzer gestoppt: kein Fehler. Der Auftrag bleibt liegen (Zwischenergebnisse bleiben erhalten);
+            # "Export erneut versuchen" im Dashboard setzt ihn später fort.
+            status = "stopped"
+            job_stop.clear(config["work"], key)
+            record(db, key, "Gestoppt", "vom Dashboard aus")
+            print(f"{source.name}: gestoppt", flush=True)
         except Exception as error:  # auch KeyError/sqlite3.Error: sonst bliebe der Job endlos auf "processing"
             status = "review"
             record(db, key, "Export fehlgeschlagen", f"{type(error).__name__} · {key}.log")
@@ -503,7 +595,8 @@ def scan(config, db, observations):
             db.execute("UPDATE recordings SET status=? WHERE key=?", (status, key))
         if status == "ready":
             process_clips(job_config, db, source, key)
-        observations[source] = (signature, since, True)
+        # Ein Auftrag, der auf "Plan prüfen" wartet, bleibt "offen": der Watcher schaut weiter nach der Bestätigung
+        observations[source] = (signature, since, status != STATUS_WAITING)
 
 
 def process_clips(config, db, source, key, *, retry=False):
@@ -531,8 +624,13 @@ def process_clips(config, db, source, key, *, retry=False):
         run_clips(config, source, key)
     except Exception as error:  # auch KeyError/sqlite3.Error: Status "review" statt Dauerschleife
         status = "review"
-        record(db, key, "Clips fehlgeschlagen", f"{type(error).__name__} · {key}.clips.log")
-        print(f"{source.name}: Clips prüfen ({type(error).__name__}), siehe {key}.clips.log", flush=True)
+        if isinstance(error, job_stop.JobStopped):
+            job_stop.clear(config["work"], key)
+            record(db, key, "Clips gestoppt", "vom Dashboard aus")
+            print(f"{source.name}: Clips gestoppt", flush=True)
+        else:
+            record(db, key, "Clips fehlgeschlagen", f"{type(error).__name__} · {key}.clips.log")
+            print(f"{source.name}: Clips prüfen ({type(error).__name__}), siehe {key}.clips.log", flush=True)
     else:
         status = "ready"
         record(db, key, "Clips abgeschlossen")
@@ -603,7 +701,20 @@ def main():
             print(f"Warte auf Aufnahmen in {profile['input']}", flush=True)
             return workers[work]
 
+        migrated = False
         while True:
+            if not migrated:
+                migrated = True
+                # Einmalig und idempotent: alte Hash-Ordner der Clips auf lesbare Namen umstellen (clip_migration.py).
+                # Erst nach der Sperre des Hauptprofils (worker_for), damit nie zwei Watcher gleichzeitig umbenennen
+                # und noch kein Auftrag läuft. Ein Fehler hält den Watcher nie auf.
+                try:
+                    worker_for(load_profiles(args.config)[0])
+                    moved, changed = clip_migration.run_once(args.config)
+                    if moved or changed:
+                        print(f"Clip-Ordner umbenannt: {moved}. Clips-Ordner des Hauptprofils angepasst: {changed}.", flush=True)
+                except Exception as error:
+                    print(f"Clip-Ordner nicht umbenannt ({type(error).__name__}).", flush=True)
             prefs = user_settings.load(args.config.parent)
             chosen = user_settings.stored(args.config.parent)
             if prefs["pause_while_gaming"] and not args.once and fullscreen_app_active():

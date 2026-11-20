@@ -26,7 +26,7 @@ def episodes(profiles):
             continue
         with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as db:
             batches = db.execute("SELECT key,status FROM recordings "
-                                 "WHERE status IN ('processing','ready','review')").fetchall()
+                                 "WHERE status IN ('processing','ready','review','stopped')").fetchall()
             handoffs = dict(db.execute("SELECT episode,status FROM handoffs"))
         series_db = Path(profile["state"])
         if not series_db.is_file():
@@ -57,7 +57,7 @@ def episodes(profiles):
             for number in sorted(numbers):
                 stem = f"{key}-ep{number:02d}"
                 stamp = planned.get(stem)
-                if status == "review" and not stamp:
+                if status in ("review", "stopped") and not stamp:
                     continue
                 title = f"{profile['series']} · Folge {number:02d}"
                 try:
@@ -233,6 +233,7 @@ def build(parent, profiles, blocked, snapshot_path=None):
                 status = {
                     "processing": "Wartet auf Export",
                     "review": "Bearbeitung prüfen",
+                    "stopped": "Gestoppt",
                     "ready": "An den Server übergeben" if handoff == "sent" else "Übergabe ausstehend",
                 }[processing]
                 appointments.setdefault(local.date(), []).append((local, title, status))

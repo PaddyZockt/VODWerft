@@ -120,6 +120,17 @@ class YouTube:
     def call(self, method, url, *, headers=None, body=None):
         return self.transport(method, url, headers={**self.authorization(), **(headers or {})}, body=body)
 
+    def add_to_playlist(self, video_id, playlist_id):
+        """Video einer Playlist zuordnen (playlistItems.insert). Braucht das YouTube-Recht `youtube`, nicht nur
+        `youtube.upload`; ohne es antwortet YouTube mit 403."""
+        if not VIDEO_ID.fullmatch(video_id) or not re.fullmatch(r"[A-Za-z0-9_-]{10,64}", playlist_id or ""):
+            raise UploadError("receipt_invalid")
+        body = json.dumps({"snippet": {"playlistId": playlist_id,
+                                       "resourceId": {"kind": "youtube#video", "videoId": video_id}}}).encode()
+        code, _, raw = self.call("POST", f"{API}/youtube/v3/playlistItems?part=snippet",
+                                 headers={"Content-Type": "application/json; charset=UTF-8"}, body=body)
+        require(code, raw, "playlist")
+
     def thumbnail(self, video_id, cover):
         if not VIDEO_ID.fullmatch(video_id):
             raise UploadError("receipt_invalid")

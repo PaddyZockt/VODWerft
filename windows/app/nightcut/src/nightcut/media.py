@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -207,19 +208,54 @@ def crop_filter(region: dict, src_w: int, src_h: int) -> str:
     return f"crop={w}:{h}:{x}:{y}"
 
 
+def run_with_progress(cmd: list[str], duration: float, progress) -> tuple[bytes, bytes]:
+    """Like `run(cmd, capture_output=True)`, but reports how far ffmpeg got: `progress(percent)` is called when the
+    percentage moves on by 5 points. The position comes from the `pts_time:` lines of the showinfo filter on stderr.
+    (VODWerft/VODWerft: so a long recording shows a real counter instead of nothing for minutes.)"""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    lines: list[bytes] = []
+
+    def read_errors() -> None:
+        last = -5
+        for line in iter(proc.stderr.readline, b""):
+            lines.append(line)
+            hit = re.search(rb"pts_time:\s*(-?[\d.]+)", line)
+            if hit and duration > 0:
+                percent = int(max(0.0, min(99.0, float(hit.group(1)) / duration * 100)))
+                if percent >= last + 5:
+                    last = percent
+                    progress(percent)
+
+    reader = threading.Thread(target=read_errors, daemon=True)
+    reader.start()
+    out = proc.stdout.read()
+    proc.wait()
+    reader.join()
+    err = b"".join(lines)
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd, out, err)
+    return out, err
+
+
 def keyframe_scan(src: Path, region: dict, src_w: int, src_h: int, mask: dict | None = None,
-                  size: tuple[int, int] = (64, 36)) -> dict[str, np.ndarray]:
+                  size: tuple[int, int] = (64, 36), duration: float | None = None,
+                  progress=None) -> dict[str, np.ndarray]:
     """Tiny grey thumbnails of every keyframe -> time, brightness and change to the previous keyframe.
 
     Only keyframes are decoded, so hours of video take minutes. `mask` is a region of the
     full frame to ignore (a facecam burned into the picture would always look "moving").
     """
     w, h = size
-    proc = run(["ffmpeg", "-hide_banner", "-nostats", "-v", "info", "-skip_frame", "nokey", "-i", str(src),
-                "-map", "0:v:0", "-vf", f"{crop_filter(region, src_w, src_h)},scale={w}:{h},format=gray,showinfo",
-                "-fps_mode", "passthrough", "-f", "rawvideo", "-"], capture_output=True)
-    frames = np.frombuffer(proc.stdout, np.uint8).reshape(-1, h, w).astype(np.float32)
-    times = np.array([float(t) for t in re.findall(rb"pts_time:\s*(-?[\d.]+)", proc.stderr)], dtype=np.float32)
+    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-v", "info", "-skip_frame", "nokey", "-i", str(src),
+           "-map", "0:v:0", "-vf", f"{crop_filter(region, src_w, src_h)},scale={w}:{h},format=gray,showinfo",
+           "-fps_mode", "passthrough", "-f", "rawvideo", "-"]
+    if progress is not None and duration:
+        stdout, stderr = run_with_progress(cmd, duration, progress)
+    else:
+        proc = run(cmd, capture_output=True)
+        stdout, stderr = proc.stdout, proc.stderr
+    frames = np.frombuffer(stdout, np.uint8).reshape(-1, h, w).astype(np.float32)
+    times = np.array([float(t) for t in re.findall(rb"pts_time:\s*(-?[\d.]+)", stderr)], dtype=np.float32)
     n = min(len(frames), len(times))
     frames, times = frames[:n], times[:n]
     keep = np.ones((h, w), dtype=bool)

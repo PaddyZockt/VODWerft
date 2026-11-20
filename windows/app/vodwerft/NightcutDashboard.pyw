@@ -20,6 +20,11 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 import diagnostics
 import settings as user_settings
 import self_update
+import disk_space
+import notify_events
+import toast
+import update_dialog
+import update_gate
 import single_instance
 import settings_window
 import theme
@@ -32,6 +37,8 @@ from job_cleanup import request as request_cleanup
 from clip_retry import request_retry
 from episode_approval import approval_path, approve, draft_path, mission_seconds
 from job_history import history, retry_render
+from job_stop import request_stop
+import library_names
 from retention import write
 from dashboard_data import (  # noqa: F401 - einige Namen bleiben hier für ältere Aufrufer erreichbar
     CUTS, EMPTY_TEXT, GROUPS, UPLOAD, UPLOAD_REASON, cleanup_view, correction, counts_text, describe,
@@ -239,13 +246,14 @@ def main():
     ttk.Button(nav, text="Einstellungen", command=open_settings).pack(side="right", padx=(0, theme.PAD_BUTTON))
 
     # Update ueber Git: beim Start und alle 6 Stunden im Hintergrund suchen, ausserdem per Knopf.
-    update_state = {"label": "", "busy": False}
+    # flow: Ein Update-Ablauf (Hinweise, Prüfung, Warten, Laden) ist im Gange; waiting: Name des Updates, auf das gewartet wird
+    update_state = {"label": "", "busy": False, "flow": False, "waiting": None}
     update_results = Queue()
     update_button = ttk.Button(nav, text="Nach Updates suchen")
     update_button.pack(side="right", padx=(0, theme.PAD_BUTTON))
 
     def check_for_update(manual=False):
-        if update_state["busy"]:
+        if update_state["busy"] or update_state["flow"]:
             return
         update_state["busy"] = True
         update_button.configure(text="Suche …", state="disabled")
@@ -257,15 +265,7 @@ def main():
                 update_results.put(("error", str(error), manual))
         Thread(target=work, daemon=True).start()
 
-    def install_update():
-        label = update_state["label"]
-        if not messagebox.askyesno(
-                "Update installieren",
-                f"Update {label} ist verfügbar (installiert: {self_update.installed() or 'unbekannt'}).\n\n"
-                "Jetzt herunterladen und installieren?\n\nDas Dashboard schließt sich dabei. Ein neues Fenster zeigt den "
-                "Fortschritt (Windows fragt nach Administratorrechten). Läuft gerade ein Schnitt, passiert nichts. "
-                "Danach öffnest du das Dashboard wieder über das Tray-Symbol.", parent=root):
-            return
+    def start_prepare(label):
         update_state["busy"] = True
         update_button.configure(text="Lade Update …", state="disabled")
 
@@ -276,8 +276,48 @@ def main():
                 update_results.put(("error", str(error), True))
         Thread(target=work, daemon=True).start()
 
+    def check_gate(label, waiting):
+        """Läuft gerade eine Bearbeitung? (im Hintergrund; das Ergebnis kommt als "gate")"""
+        update_state["busy"] = True
+        if not waiting:
+            update_button.configure(text="Prüfe laufende Bearbeitung …", state="disabled")
+
+        def work():
+            try:
+                update_results.put(("gate", (label, update_gate.busy(), waiting), True))
+            except Exception:  # unerwartet: wie "nichts läuft" behandeln, update.ps1 prüft noch einmal
+                update_results.put(("gate", (label, False, waiting), True))
+        Thread(target=work, daemon=True).start()
+
+    def install_update():
+        """Erst die Patch Notes holen und zeigen; erst nach "Jetzt installieren" wird das Update geladen."""
+        label = update_state["label"]
+        if update_state["flow"]:
+            return
+        update_state["flow"] = True
+        update_state["busy"] = True
+        update_button.configure(text="Lade Hinweise …", state="disabled")
+
+        def work():
+            try:
+                # Der gemerkte Stand ist bis zu sechs Stunden alt: vor dem Laden noch einmal nach dem neuesten sehen
+                newest = self_update.resolve(label)
+                update_results.put(("notes", (newest, self_update.notes(newest)), True))
+            except Exception as error:
+                update_results.put(("error", str(error), True))
+        Thread(target=work, daemon=True).start()
+
     def update_clicked():
-        install_update() if update_state["label"] else check_for_update(True)
+        if update_state["waiting"]:  # der Knopf bricht das Warten auf das Ende der Bearbeitung ab
+            label = update_state["waiting"]
+            update_state["waiting"] = None
+            update_state["flow"] = False
+            update_button.configure(text=f"Update verfügbar: {label}")
+            notify("Das Warten auf das Update wurde abgebrochen.", "info")
+        elif update_state["label"]:
+            install_update()
+        else:
+            check_for_update(True)
 
     update_button.configure(command=update_clicked)
 
@@ -321,18 +361,59 @@ def main():
         if kind == "tool-error":
             messagebox.showerror("Hilfe", data, parent=root)
             return
+        if kind == "disk":
+            if data:
+                name, free = data[0]
+                notify(f"Wenig Speicherplatz auf {name}: nur noch {free:.0f} GB frei. Bitte Platz schaffen, bevor das "
+                       "nächste Video gerendert wird.", "warning")
+            return
+        if kind == "checked" and update_state["flow"]:
+            return  # die 6-Stunden-Prüfung darf einen laufenden Update-Ablauf nicht stören
         update_state["busy"] = False
         update_button.configure(state="normal")
         if kind == "error":
+            update_state["flow"] = False
+            update_state["waiting"] = None
             update_button.configure(text="Update verfügbar: " + update_state["label"] if update_state["label"]
                                     else "Nach Updates suchen")
             if manual:
                 messagebox.showerror("Update", data, parent=root)
             return
+        if kind == "notes":
+            newest, text = data
+            update_state["label"] = newest
+            if update_dialog.ask(root, newest, self_update.installed(), text):
+                check_gate(newest, False)
+            else:
+                update_state["flow"] = False
+                update_button.configure(text=f"Update verfügbar: {newest}")
+            return
+        if kind == "gate":
+            label, working, waiting = data
+            if waiting and update_state["waiting"] != label:
+                return  # inzwischen abgebrochen
+            if not working:
+                update_state["waiting"] = None
+                start_prepare(label)  # nichts läuft: gleich laden und installieren
+            elif waiting or messagebox.askyesno(
+                    "Update installieren",
+                    "Gerade läuft eine Bearbeitung. Soll das Update automatisch eingespielt werden, sobald sie "
+                    "fertig ist?\n\nDas Dashboard prüft dafür jede Minute und bleibt bis dahin offen. Nein: nichts "
+                    "wird verändert, du kannst später erneut auf „Update verfügbar“ klicken.", parent=root):
+                update_state["waiting"] = label
+                update_button.configure(text="Update wartet auf das Ende der Bearbeitung · anklicken zum Abbrechen")
+                root.after(update_gate.RECHECK_SECONDS * 1000,
+                           lambda: update_state["waiting"] == label and check_gate(label, True))
+            else:
+                update_state["flow"] = False
+                update_button.configure(text=f"Update verfügbar: {label}")
+            return
         if kind == "prepared":
             try:
                 self_update.start(data)
             except self_update.UpdateError as error:
+                update_state["flow"] = False
+                update_button.configure(text=f"Update verfügbar: {update_state['label']}")
                 messagebox.showerror("Update", str(error), parent=root)
                 return
             root.destroy()
@@ -349,11 +430,19 @@ def main():
                 messagebox.showinfo("Update", f"VODWerft ist aktuell (Update {installed or 'unbekannt'}).", parent=root)
 
     def drain_updates():
-        try:
-            while True:
-                handle_update_result(*update_results.get_nowait())
-        except Empty:
-            pass
+        while True:
+            try:
+                item = update_results.get_nowait()
+            except Empty:
+                break
+            try:
+                handle_update_result(*item)
+            except tk.TclError:
+                raise
+            except Exception as error:  # eine Ausnahme darf das Abholen der Ergebnisse nie dauerhaft beenden
+                update_state["flow"] = False
+                update_state["busy"] = False
+                print(f"Update-Ergebnis konnte nicht verarbeitet werden: {type(error).__name__}", flush=True)
         try:
             root.after(500, drain_updates)
         except tk.TclError:
@@ -404,6 +493,20 @@ def main():
         if notice_timer[0]:
             root.after_cancel(notice_timer[0])
         notice_timer[0] = root.after(NOTICE_SECONDS * 1000, lambda: notice.configure(text=""))
+
+    def check_disk():
+        """Alle 30 Minuten: ist auf dem Arbeitslaufwerk noch genug Platz zum Rendern (siehe disk_space.py)?
+        Im Hintergrund: ein getrenntes Netzlaufwerk kann die Abfrage sekundenlang blockieren."""
+        folders = [p["work"] for p in profiles if p.get("work")]
+
+        def work():
+            try:
+                update_results.put(("disk", disk_space.low_space(folders), False))
+            except Exception:  # eine Warnung darf das Dashboard nie stören
+                pass
+        Thread(target=work, daemon=True).start()
+        root.after(30 * 60 * 1000, check_disk)
+    root.after(8000, check_disk)
 
     jobs_header = ttk.Frame(frame)
     jobs_header.pack(fill="x", pady=(0, 6))
@@ -521,6 +624,15 @@ def main():
             mission_button.pack(side="right", padx=(0, theme.PAD_BUTTON))
         else:
             mission_button.pack_forget()
+        if row and row.awaiting_plan:
+            plan_button.pack(side="right", padx=(0, theme.PAD_BUTTON))
+        else:
+            plan_button.pack_forget()
+        if row and row.running:
+            stop_button.configure(state="normal")
+            stop_button.pack(side="right", padx=(0, theme.PAD_BUTTON))
+        else:
+            stop_button.pack_forget()
         retry_button.configure(state="normal" if row and row.clips_retry else "disabled")
         for button in needs_row:
             button.configure(state="normal" if row else "disabled")
@@ -585,6 +697,54 @@ def main():
             subprocess.Popen([str(player), "--no-one-instance", f"--start-time={start}", str(source)])
         except OSError:
             notify("VLC oder die Originaldatei ist derzeit nicht erreichbar.", "warning")
+
+    def open_plan_review():
+        """Öffnet das Prüffenster (eigener Prozess: lokaler Webserver plus Edge-Fenster)."""
+        row = selected()
+        if not row or not row.awaiting_plan:
+            return
+        # Nur ein Prüffenster je Auftrag: Zwei Fenster hätten je einen eigenen Stand und würden sich beim
+        # Speichern gegenseitig überschreiben (und zwei ffmpeg in dieselbe Datei schreiben).
+        open_windows = open_plan_review.__dict__.setdefault("windows", {})
+        running = open_windows.get(str(row.folder))
+        if running is not None and running.poll() is None:
+            notify("Das Prüffenster für diesen Auftrag ist schon geöffnet (evtl. hinter anderen Fenstern).", "info")
+            return
+        command = [str(Path(sys.executable).with_name("pythonw.exe")), "-X", "utf8", "-B",
+                   str(Path(__file__).with_name("plan_server.py")), str(row.folder)]
+        ffmpeg = profile_of(row).get("ffmpeg_directory")
+        if ffmpeg:
+            command += ["--ffmpeg-dir", str(ffmpeg)]
+        command += ["--theme", user_settings.load(ROOT / "production")["theme"]]  # gleiche Farben wie das Dashboard
+        try:
+            open_windows[str(row.folder)] = subprocess.Popen(command, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except OSError as error:
+            problem("Das Prüffenster konnte nicht gestartet werden.", error, row.key)
+            notify("Das Prüffenster konnte nicht gestartet werden.", "warning")
+            return
+        notify("Das Prüffenster öffnet sich. Nach dem Bestätigen läuft der Auftrag weiter.", "success")
+
+    def stop_selected():
+        """Beendet den laufenden Auftrag: Das Dashboard legt eine Wunschdatei an, der Watcher beendet ihn binnen Sekunden."""
+        row = selected()
+        if not row or not row.running:
+            return
+        if not messagebox.askyesno(
+            "Auftrag stoppen",
+            f"{row.name}\n\n"
+            "Die Bearbeitung wird beendet. Fertige Zwischenergebnisse (Analyse, Schnittplan, gerenderte Abschnitte) bleiben "
+            "erhalten. Später setzt „Verlauf → Export erneut versuchen“ den Auftrag dort fort (bei den Hochkant-Clips: „Hochkant-Clips erneut versuchen“).\n\n"
+            "Auftrag jetzt stoppen?", parent=root, icon="warning"):
+            return
+        try:
+            request_stop(row.work, row.key)
+        except OSError as error:
+            messagebox.showerror("Auftrag stoppen", problem("Der Stopp konnte nicht angefordert werden.", error,
+                                                            "Auftrag stoppen"), parent=root)
+            return
+        stop_button.configure(state="disabled")
+        notify("Stopp angefordert. Der Auftrag wird in wenigen Sekunden beendet.", "success")
+        refresh()
 
     def mark_mission():
         row = selected()
@@ -869,6 +1029,17 @@ def main():
                 return
             notify("Für diesen Auftrag ist noch keine YouTube-ID gespeichert.", "warning")
             return
+        if kind == "clips":
+            # Ordner der Hochkant-Clips dieser Aufnahme (lesbarer oder alter Name), sonst der Sammelordner des Spiels
+            root = profile_of(row).get("clips_output")
+            if not root:
+                notify("Für dieses Spiel ist kein Clips-Ordner eingestellt.", "warning")
+                return
+            try:
+                os.startfile(library_names.find_folder(root, row.key) or Path(root))
+            except (OSError, AttributeError):
+                notify("Der Clips-Ordner ist derzeit nicht erreichbar.", "warning")
+            return
         log_name = f"{row.key}.clips.log" if row.clips_retry else f"{row.key}.log"
         path = {"inbox": row.inbox, "output": row.review[0] if row.review else row.folder,
                 "source": row.source, "log": row.work / log_name}[kind]
@@ -905,6 +1076,8 @@ def main():
         tag = "review" if kind == "todo" else "complete" if kind == "done" else "working"
         table.insert(parent, "end", iid=row.key, text=row.name, values=(row.series, row.detail), tags=(tag,))
 
+    tracker = notify_events.Tracker()
+
     def poll():
         nonlocal waiting
         try:
@@ -918,6 +1091,14 @@ def main():
             opened = {item: bool(table.item(item, "open")) for item in all_groups()}
             rows.clear()
             rows.update((row.key, row) for row in data)
+            try:  # Windows-Meldung bei "wartet auf dich" und "fertig" (nur, wenn das Dashboard nicht gerade im Vordergrund ist)
+                messages = tracker.changes(data)
+                if (messages and user_settings.load(ROOT / "production")["benachrichtigungen"]
+                        and root.focus_displayof() is None):
+                    for message in messages:
+                        toast.show(message.title, message.text)
+            except Exception:  # eine Meldung darf die Anzeige nie stören
+                pass
             table.delete(*table.get_children())
             buckets = grouped(data)
             for name, title, default_open in GROUPS:
@@ -957,7 +1138,7 @@ def main():
 
     ttk.Label(buttons, text="Öffnen", style="Muted.TLabel").pack(side="left", padx=(0, 8))
     for caption, kind in (("Eingang öffnen", "inbox"), ("Ausgabe öffnen", "output"),
-                          ("Original ansehen", "source"), ("Protokoll öffnen", "log"),
+                          ("Original ansehen", "source"), ("Clips öffnen", "clips"), ("Protokoll öffnen", "log"),
                           ("YouTube Studio", "studio")):
         button = ttk.Button(buttons, text=caption, command=lambda action=kind: open_path(action))
         button.pack(side="left", padx=(0, theme.PAD_BUTTON))
@@ -968,6 +1149,8 @@ def main():
     history_button.pack(side="right", padx=(0, theme.PAD_BUTTON))
     needs_row.extend((preview_button, history_button))
     mission_button = ttk.Button(jobs_header, text="Missionsbeginn", command=mark_mission)
+    plan_button = ttk.Button(jobs_header, text="Plan prüfen öffnen", command=open_plan_review)
+    stop_button = ttk.Button(jobs_header, text="Auftrag stoppen", style="Danger.TButton", command=stop_selected)
     ttk.Button(buttons, text="Aktualisieren (F5)", command=refresh).pack(side="right")
     table.bind("<<TreeviewSelect>>", show)
 

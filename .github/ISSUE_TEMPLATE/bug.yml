@@ -13,8 +13,8 @@ body:
     id: version
     attributes:
       label: "VODWerft version / Version"
-      description: "Shown in the window title and in the installer, e.g. 0.1.0-beta.5 / Steht in der Titelleiste und im Installer."
-      placeholder: "0.1.0-beta.5"
+      description: "Shown in the window title and in the installer, e.g. 0.1.0-beta.6 / Steht in der Titelleiste und im Installer."
+      placeholder: "0.1.0-beta.6"
     validations:
       required: true
   - type: input

@@ -14,6 +14,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from eta import Estimator
+from plan_status import final_cuts as plan_final_cuts
+from plan_status import summary as plan_summary
+import youtube_fields
 from status_report import log_phase
 from release_slots import read_manual
 from game_profiles import recording_settings
@@ -71,6 +75,7 @@ class JobRow:
     cleanup_mode: str = "manual"
     cleanup_verified: bool = False
     clips_retry: bool = False                     # Hochkant-Clips können erneut versucht werden
+    running: bool = False                         # Der Watcher bearbeitet den Auftrag gerade ("Auftrag stoppen" möglich)
 
     @property
     def name(self):
@@ -89,19 +94,26 @@ class JobRow:
         return self.detail == AWAITING_MISSION
 
     @property
+    def awaiting_plan(self):
+        return self.detail.startswith(PLAN_REVIEW)
+
+    @property
     def needs_render_check(self):
-        return self.detail == RENDER_CHECK
+        """Im Verlauf ist "Export erneut versuchen" frei: nach einem Fehler und nach "Auftrag stoppen"."""
+        return self.detail in (RENDER_CHECK, STOPPED)
 
 
 AWAITING_MISSION = "Wartet auf Missionsbeginn"
 RENDER_CHECK = "Bearbeitung prüfen · Protokoll öffnen"
+STOPPED = "Gestoppt · Verlauf, Export erneut versuchen"
+PLAN_REVIEW = "Plan prüfen · wartet auf dich"  # enthält "prüfen": landet in der Gruppe "Wartet auf dich"
 GROUPS = (("work", "In Arbeit", True), ("todo", "Wartet auf dich", True), ("done", "Fertig", False))
 EMPTY_TEXT = "Noch keine Aufnahmen. Lege ein Video in den Eingangsordner."
 
 
 def bucket_of(status):
     """In welche Gruppe gehört ein Auftrag: läuft von selbst ("work"), braucht dich ("todo") oder ist fertig ("done")."""
-    if "prüfen" in status or "Wartet auf" in status or "Freigabe" in status:
+    if "prüfen" in status or "Wartet auf" in status or "Freigabe" in status or status.startswith("Gestoppt"):
         return "todo"
     if "bestätigt" in status or "abgeschlossen" in status:
         return "done"
@@ -159,6 +171,7 @@ UPLOAD_REASON = {
     "thumbnail_retry": "Thumbnail wird für das vorhandene YouTube-Video erneut übertragen.",
 }
 CUTS = {
+    "manual": "von dir entfernt",
     "silence": "Sprechpause", "menu": "Menü", "loading": "Ladebildschirm",
     "pause": "Pause", "black": "Schwarzbild", "afk": "Standbild / AFK",
 }
@@ -289,6 +302,8 @@ def snapshot(profiles, samples=None):
     rows, warnings = [], []
     if samples is None:
         samples = {}
+    # Der Schätzer lebt in `samples`, das die Oberfläche zwischen den Aktualisierungen behält (sonst gäbe es nie genug Verlauf)
+    estimator = samples.setdefault("restzeit", Estimator())
     for config in profiles:
         work, inbox = Path(config["work"]), Path(config["input"])
         notices = Path(config["upload_incoming"]).parent / ".status"
@@ -333,8 +348,13 @@ def snapshot(profiles, samples=None):
                 detail = RENDER_CHECK
             elif state == "retry":
                 detail = "Export-Wiederholung angefordert"
+            elif state == "stopped":
+                detail = STOPPED
             elif state == "awaiting_start":
                 detail = AWAITING_MISSION
+            elif state == "awaiting_plan":
+                plan = plan_summary(folder)
+                detail = PLAN_REVIEW + (f" · {plan['text']}" if plan else "")
             elif config.get("clips_config") and clips is None:
                 detail = log_phase(work / f"{key}.clips.log", "Hochkant-Clips werden vorbereitet")
             elif clips == "review":
@@ -362,6 +382,15 @@ def snapshot(profiles, samples=None):
                 if replacement and replacement in remote:
                     updates = [{**remote[replacement], "job_id": replacement}]
                     detail = UPLOAD.get(updates[0].get("status"), detail)
+            running = state == "processing" or (state == "ready" and bool(config.get("clips_config"))
+                                                and clips in (None, "retrying"))
+            if running and not review:
+                # Restzeit des laufenden Schritts (nur wenn ein Zähler oder Prozentwert sie hergibt)
+                eta_text = estimator.text(key, detail, time.monotonic())
+                if eta_text:
+                    detail += f" · noch {eta_text}"
+            else:
+                estimator.forget(key)
             if key in known_inputs and detail in ("Upload bestätigt", "Bearbeitung abgeschlossen"):
                 detail += " · Bereits verarbeitet"
             supported = bool(BATCH.fullmatch(key) and not review and key not in config.get("retention_hold", ()))
@@ -370,8 +399,27 @@ def snapshot(profiles, samples=None):
             rows.append(JobRow(key=key, series=config["series"], source=Path(source), inbox=inbox, folder=folder,
                                detail=detail, updates=updates, review=review, cleanup_supported=supported,
                                cleanup_mode=mode, cleanup_verified=bool(verified),
-                               clips_retry=bool(state == "ready" and clips == "review" and Path(source).is_file())))
+                               clips_retry=bool(state == "ready" and clips == "review" and Path(source).is_file()),
+                               running=bool(running and not review)))
     return rows, warnings
+
+
+def studio_hint(row):
+    """Merkzeile für das, was nur von Hand in YouTube Studio geht: Das Feld "Titel des Spiels" (unter "Mehr anzeigen")
+    hat keine Entsprechung in der YouTube-API. Der Spielname steht schon im Spielprofil."""
+    return f"In YouTube Studio von Hand setzen: Titel des Spiels: {row.series}"
+
+
+def collab_hint(row):
+    """Hinweis auf Collab-Partner dieser Aufnahme (Profil: "Collab-Partner") oder None. Die YouTube-API kann keinen
+    Collab-Partner setzen; die Einladung geschieht in YouTube Studio."""
+    try:
+        config = json.loads(row.folder.with_name(row.folder.name + ".profile.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    channels = youtube_fields.collab_hints(config.get("collab_partners") if isinstance(config, dict) else None,
+                                           row.source.name)
+    return ("Collab einladen (in YouTube Studio): " + ", ".join(channels)) if channels else None
 
 
 def describe(row):
@@ -384,7 +432,13 @@ def describe(row):
         stamp = notice.get("publish_at")
         date = f" · {datetime.fromisoformat(stamp).astimezone():%d.%m.%Y %H:%M}" if stamp else ""
         label = f"Folge {notice['episode']:02d}" if "episode" in notice else f"Upload {index}"
-        lines.append(f"{label} · {UPLOAD.get(notice.get('status'), 'Status unbekannt')}{date}")
+        hint = " · Playlist-Zuordnung fehlgeschlagen (in YouTube Studio von Hand zuordnen)" \
+            if notice.get("reason") == "playlist_failed" else ""
+        lines.append(f"{label} · {UPLOAD.get(notice.get('status'), 'Status unbekannt')}{date}{hint}")
+    lines.append(studio_hint(row))
+    collab = collab_hint(row)
+    if collab:
+        lines.append(collab)
     lines.append("SCHNITTPLAN · Startzeit anklicken, um das Original in VLC zu öffnen")
     if review:
         pieces = review[1][0]["pieces"]
@@ -395,7 +449,10 @@ def describe(row):
             lines.append(f"{timestamp(previous['end'])} bis {timestamp(current['start'])}   ·   entfernt")
         lines.append(f"Geplante Dauer: {timestamp(sum(p['end'] - p['start'] for p in pieces))}")
     else:
-        cuts = read_json(folder / "nightcut" / "cuts.json", [])
+        cuts, checked = plan_final_cuts(folder)  # nach "Plan prüfen": mit deinen Entfernungen und behaltenen Bereichen
+        cuts = cuts or []
+        if checked["manual"] or checked["keep"]:
+            lines.append(f"Von dir geprüft: {checked['manual']} Bereiche entfernt, {checked['keep']} Bereiche behalten")
         for recording in cuts if len(cuts) <= 1 else ():
             for cut in recording.get("removals", []):
                 why = " + ".join(CUTS.get(label, label) for label in cut["label"].split("+"))

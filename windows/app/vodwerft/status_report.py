@@ -11,9 +11,12 @@ from contextlib import closing
 from pathlib import Path
 
 from atomic import atomic_write
+import library_overview
+from eta import Estimator
 from file_ready import unlocked
 from bundle import media_extensions, mission_title
 from game_profiles import load_profiles
+from plan_status import summary as plan_summary
 from version import compatible, read as program_version
 from server_status import evaluate as server_state
 
@@ -28,24 +31,48 @@ PHASES = {
     "candidates": "Clip-Kandidaten werden gesucht",
     "vision": "Clip-Kandidaten werden gesichtet",
     "edit": "Clips werden ausgewählt",
+    "judge": "Clips werden bewertet",
     "render": "Clips werden gerendert",
     "shorts": "Hochkant-Clips und Untertitel werden gerendert",
     "export": "Schnittlisten werden exportiert",
 }
 RENDER = re.compile(r"^Folge (\d+), (\d+) von (\d+)$")
 PHASE = re.compile(r"^\s*▶\s+(\w+)")
-PROGRESS = re.compile(r"^(?:(?:transcript|vision)\s+)?(\d+)/(\d+)$")
+PROGRESS = re.compile(r"^(?:(?:scan|transcript|vision|judge|render|shorts)\s+)?(\d+)/(\d+)$")
+# Schritte, bei denen "(x von y)" in der Karte steht: lange Schritte mit einem echten Zähler (Sprache, Bild, Bewertung, Clips).
+# Kurze Schritte (unter etwa einer Minute) bekommen keine Anzeige, sonst springt die Karte nur unruhig.
+COUNTED = ("scan", "transcript", "vision", "cuts", "judge", "render", "shorts")
 ANSI = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 CHECKSUM_STATUS = "checksum-status"
-# Texte der Eingangs-Meldung. Die Discord-Seite erkennt sie am genauen Wortlaut: nicht umformulieren.
+# Texte der Eingangs-Meldung. Die Statuskarten (Chat-Bot) erkennen sie am genauen Wortlaut: nicht umformulieren.
 COPY_WAIT = "Datei erkannt. Warte auf den Abschluss des Kopiervorgangs."
 QUEUED = "Datei erkannt. Kopie fertig, wartet auf die Verarbeitung des vorherigen Videos."
 READY = "Datei erkannt. Kopie fertig, die Verarbeitung startet gleich."
+# "Plan prüfen" (Schnittplan von Hand prüfen): Der Auftrag wartet auf dich. Die Statuskarten (Chat-Bot) erkennen den Text am genauen Wortlaut.
+# "Missionsbeginn eintragen" (Arma): Der Auftrag wartet auf dich. Die Statuskarten (Chat-Bot) erkennen den Text am genauen Wortlaut.
+MISSION_WAIT = "Aufnahme erkannt. Wartet auf Missionsbeginn"
+PLAN_WAIT = "Plan prüfen: wartet auf deine Bestätigung"
+# "Auftrag stoppen" (Dashboard): Der Auftrag ruht, bis du ihn mit "Export erneut versuchen" fortsetzt.
+STOPPED = "Gestoppt. Wartet auf deinen Neustart"
+# Eine Datei, die vor dem Start der Bearbeitung aus dem Eingang verschwindet (Kopie abgebrochen, umbenannt):
+REMOVED = "Aufnahme entfernt. Die Datei liegt nicht mehr im Eingang."
+# Dateiname der Speicher-Übersicht im Statusordner (der Chat-Bot zeigt sie als eigene Karte)
+STORAGE_KEY = "system-speicher"
+STORAGE_SECONDS = 600
+LIBRARY_SECONDS = 1800
+# Weitere feste Texte, die die Statuskarten (Chat-Bot) am Wortlaut erkennen (nicht umformulieren):
+RETRY_WAIT = "Aufnahme erkannt. Wartet auf Export-Wiederholung"
+APPROVAL_WAIT = "Aufnahme erkannt. Folgen warten auf Upload-Freigabe"
+PREPARING = "Aufnahme erkannt, Bearbeitung wird vorbereitet"
 # str(Quelldatei) -> ((Größe, Änderungszeit), monotonic-Zeitpunkt, seit dem die Datei unverändert ist)
 _UNCHANGED_SINCE = {}
 # str(Arbeitsordner) -> True, wenn dieses Profil gerade verarbeitet. Der Watcher arbeitet alle Profile
 # nacheinander in einem Prozess ab: Eine fertig kopierte Datei wartet auch auf Aufnahmen anderer Profile.
 _PROFILE_BUSY = {}
+# Eingangs-Meldung -> Zahl der Durchläufe hintereinander, in denen ihre Datei im Eingang fehlte
+_MISSING = {}
+# Merkt sich je Auftrag, wie schnell der Zähler des laufenden Schritts wächst (für "etwa 12 Min." auf der Karte)
+_ETA = Estimator()
 
 
 def copy_finished(source, signature, minimum, now):
@@ -91,6 +118,8 @@ def log_phase(path, fallback):
     progress = None
     for line in reversed(lines):
         line = ANSI.sub("", line).strip()
+        if line.startswith("Plan prüfen:"):
+            return fallback  # nach der Bestätigung hat der neue Lauf noch keine Stufe begonnen: alte Stufen sind nicht aktuell
         counter = PROGRESS.fullmatch(line)
         if counter and progress is None:
             progress = f" ({counter[1]} von {counter[2]})"
@@ -101,7 +130,7 @@ def log_phase(path, fallback):
         stage = PHASE.match(line)
         if stage and stage[1] in PHASES:
             detail = PHASES[stage[1]]
-            if progress and stage[1] in ("transcript", "vision", "cuts"):
+            if progress and stage[1] in COUNTED:
                 detail += progress
             return detail
     return fallback
@@ -152,6 +181,7 @@ def publish_status(config, directory, *, clock=time.monotonic):
     pending = []
     fingerprints = {}
     processed = {}
+    warnings = {}
     if (work / "jobs.sqlite3").is_file():
         with closing(sqlite3.connect(work / "jobs.sqlite3", timeout=2)) as db:
             jobs = db.execute(
@@ -162,6 +192,13 @@ def publish_status(config, directory, *, clock=time.monotonic):
                             for path, key, size, modified, inode in db.execute(
                                 "SELECT path, key, size, modified, inode FROM fingerprints "
                                 "JOIN recordings USING (key) WHERE recordings.status='ready'")}
+            try:  # Warnung des laufenden Versuchs (z. B. "Wenig Speicherplatz auf C: ..."): nur Einträge NACH dem letzten Start
+                warnings = dict(db.execute(
+                    "SELECT w.job, w.detail FROM job_events w WHERE w.label='Wenig Speicherplatz' AND w.rowid > "
+                    "COALESCE((SELECT MAX(s.rowid) FROM job_events s WHERE s.job=w.job "
+                    "AND s.label IN ('Export gestartet', 'Export aufgenommen')), 0) ORDER BY w.rowid"))
+            except sqlite3.Error:
+                warnings = {}  # noch kein Verlauf angelegt
             for (episode,) in db.execute("SELECT episode FROM handoffs WHERE status='sending'"):
                 batch, _, number = episode.rpartition("-ep")
                 if number.isdecimal():
@@ -215,6 +252,24 @@ def publish_status(config, directory, *, clock=time.monotonic):
             publish(directory, intake_key(source, prefix), {
                 "source": source.name, "detail": detail, **series,
             })
+    # Eingangs-Meldungen von Dateien, die nicht mehr im Eingang liegen und nie bearbeitet wurden (Kopie abgebrochen,
+    # umbenannt): Die Karte wird auf "Aufnahme entfernt" gesetzt, statt ewig gelb zu bleiben.
+    present = {Path(name).name.casefold() for name in seen}
+    for stale in directory.glob(f"{prefix}-in-*.json"):
+        try:
+            old = json.loads(stale.read_text(encoding="utf-8"))
+            name = str(old.get("source", "")).casefold()
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not name or name in present or name in known_names or old.get("detail") == REMOVED:
+            _MISSING.pop(stale.stem, None)
+            continue
+        # Ein kurzer Aussetzer der Netzwerkfreigabe lässt einzelne Dateien für einen Durchlauf fehlen: erst beim zweiten
+        # Mal hintereinander gilt die Aufnahme als entfernt.
+        _MISSING[stale.stem] = _MISSING.get(stale.stem, 0) + 1
+        if _MISSING[stale.stem] >= 2:
+            publish(directory, stale.stem, {**old, "detail": REMOVED})
+            _MISSING.pop(stale.stem, None)
     for name in [name for name in _UNCHANGED_SINCE if Path(name).parent == inbox and name not in seen]:
         del _UNCHANGED_SINCE[name]  # Datei ist aus dem Eingang verschwunden
     active = []
@@ -225,12 +280,16 @@ def publish_status(config, directory, *, clock=time.monotonic):
         awaiting_approval = status == "ready" and any(
             not path.with_suffix(".approved").is_file() and path.is_file()
             for path in approval.glob(f"{key}-ep*.draft.json"))
-        if status == "awaiting_start":
-            detail = "Aufnahme erkannt. Wartet auf Missionsbeginn"
+        if status == "awaiting_plan":
+            detail = PLAN_WAIT
+        elif status == "awaiting_start":
+            detail = MISSION_WAIT
         elif status == "retry":
-            detail = "Aufnahme erkannt. Wartet auf Export-Wiederholung"
+            detail = RETRY_WAIT
+        elif status == "stopped":
+            detail = STOPPED
         elif status == "processing":
-            detail = log_phase(work / f"{key}.log", "Aufnahme erkannt, Bearbeitung wird vorbereitet")
+            detail = log_phase(work / f"{key}.log", PREPARING)
         elif status == "review":
             reason = review_reason(Path(work) / f"{key}.log")
             detail = "Bearbeitung braucht eine Prüfung" + (f": {reason} Dashboard, Verlauf, Export erneut versuchen." if reason else "")
@@ -245,29 +304,52 @@ def publish_status(config, directory, *, clock=time.monotonic):
         elif key in transfers:
             detail = f"Folge {transfers[key]} wird an den Server übertragen"
         elif awaiting_approval:
-            detail = "Aufnahme erkannt. Folgen warten auf Upload-Freigabe"
+            detail = APPROVAL_WAIT
         elif (directory / f"verified-{key}.json").is_file():
             detail = "YouTube-Prüfung abgeschlossen"
         else:
             detail = "Bearbeitung abgeschlossen"
         payload = {"source": Path(source).name, "detail": detail,
                    "intake": intake_key(source, prefix), **series}
-        if status == "processing":
+        if status in ("processing", "awaiting_plan"):
             payload["run"] = "long"
-            if detail.startswith("Folge ") and " wird gerendert" in detail:
+            if status == "awaiting_plan" and (plan := plan_summary(Path(work) / key)):
+                payload["info"] = plan["text"]  # z. B. "9,4 min automatisch entfernt (6 Bereiche)"
+            if status == "processing" and detail.startswith("Folge ") and " wird gerendert" in detail:
                 percent = render_percent(Path(work) / key)
                 if percent is not None:
                     payload["percent"] = percent
         elif status == "ready" and clips in (None, "retrying") and config.get("clips_config"):
             payload["run"] = "clips"
+        if status == "processing" and isinstance(warnings.get(key), str) and warnings[key].strip():
+            payload["warning"] = warnings[key].strip()[:200]  # steht als "Hinweis" auf der Statuskarte
+        if payload.get("run") in ("long", "clips") and status != "awaiting_plan":
+            # Restzeit des laufenden Schritts, wenn der Fortschritt sie hergibt ("etwa 12 Min.")
+            eta_text = _ETA.text(key, detail, clock(), payload.get("percent"))
+            if eta_text:
+                payload["eta"] = eta_text
+        else:
+            _ETA.forget(key)
         publish(directory, key, payload)
         if (status == "processing" or key in transfers
                 or (status == "ready" and clips in (None, "retrying") and config.get("clips_config"))):
             active.append({"source": Path(source).name, "detail": detail})
-        elif status in ("awaiting_start", "retry", "review") or awaiting_approval:
+        elif status in ("awaiting_start", "awaiting_plan", "retry", "review", "stopped") or awaiting_approval:
             pending.append({"source": Path(source).name, "detail": detail.removeprefix("Aufnahme erkannt. ")})
     publish(work, "processed-inputs", {"jobs": processed, "updated": int(time.time())})
     return active, pending, list(processed.values())
+
+
+def publish_storage(directory, profiles):
+    """Schreibt die Speicher-Übersicht (PC-Arbeitslaufwerk und Eingangslaufwerke) in den Statusordner."""
+    import disk_space
+    places = []
+    for profile in profiles:
+        places.append((f"PC-Arbeitslaufwerk ({disk_space.label(profile['work'])})", profile["work"]))
+        places.append((f"Eingang ({disk_space.label(profile['input'])})", profile["input"]))
+    drives = disk_space.overview(places)
+    if drives:
+        publish(directory, STORAGE_KEY, {"source": "Speicherplatz", "series": "System", "detail": "", "storage": drives})
 
 
 if __name__ == "__main__":
@@ -275,7 +357,21 @@ if __name__ == "__main__":
     directory = Path(config["upload_incoming"]).parent / ".status"
     local = Path(config["work"])
     last_server = None
+    last_storage = None
+    last_library = None
     while True:
+        if last_library is None or time.monotonic() - last_library >= LIBRARY_SECONDS:
+            last_library = time.monotonic()
+            try:
+                library_overview.refresh(directory.parent)  # lesbare Bibliothek der hochgeladenen Folgen (nur lesend aus "Fertig")
+            except (OSError, ValueError) as error:
+                print(f"Bibliothek nicht aktualisiert ({type(error).__name__}).", flush=True)
+        if last_storage is None or time.monotonic() - last_storage >= STORAGE_SECONDS:
+            last_storage = time.monotonic()
+            try:
+                publish_storage(directory, load_profiles(Path(sys.argv[1])))
+            except (OSError, KeyError, ValueError) as error:
+                print(f"Speicherübersicht nicht gespeichert ({type(error).__name__}).", flush=True)
         active, pending, processed, errors = [], [], [], []
         for profile in load_profiles(Path(sys.argv[1])):
             checksum = checksum_status(Path(profile["work"]))

@@ -85,9 +85,11 @@ def patch_shorts(caption_audio, source):
     if caption_audio == "stems":
         render_original = shorts.render
 
-        def render(info, clip, n, streams, ass, cfg, out_dir, gpu=None):
+        def render(info, clip, n, streams, ass, cfg, out_dir, gpu=None, tracks=None):
             discord = info.find_audio({"index": 4})
-            return render_original(info, clip, n, {**streams, "discord": discord}, ass, cfg, out_dir, gpu=gpu)
+            # tracks: Einzelspuren hinter dem Mix (ab Nightcut 0.3.2, shorts.separate_audio): unverändert weiterreichen
+            return render_original(info, clip, n, {**streams, "discord": discord}, ass, cfg, out_dir, gpu=gpu,
+                                   tracks=tracks)
 
         shorts.render = render
 

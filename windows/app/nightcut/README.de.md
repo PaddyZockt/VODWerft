@@ -222,7 +222,7 @@ Die wichtigsten Punkte:
 output/<aufnahme>/
 ├── <aufnahme>_nightcut.xml   ← Timeline zum Importieren
 ├── media/                    ← geschnittene Clips (Gameplay + Facecam)
-├── shorts/                   ← Hochkant-Shorts mit Untertiteln
+├── shorts/                   ← Hochkant-Shorts mit Untertiteln (short_01.mp4 + short_01.xml zum Nachmischen)
 ├── youtube.txt               ← Titelideen, Beschreibung, Kapitel, Tags (KI-Entwürfe, bitte prüfen)
 ├── summary.json              ← Kurzfassung für die Morgen-Nachricht
 ├── report.md                 ← Übersicht: Clips, Titelideen, Laufzeit, VRAM, Kosten
@@ -236,6 +236,14 @@ output/<aufnahme>/
 
 Jeder Clip hat etwas Luft davor und danach zum Trimmen und einen Marker mit dem Grund,
 warum er ausgewählt wurde.
+
+**Shorts nachmischen:** `shorts/short_01.mp4` kannst du direkt hochladen. Player und Plattformen
+nehmen die erste Tonspur, und das ist der fertige Mix. Dahinter stecken in der Datei die einzelnen
+Spuren deiner Aufnahme (Mikro, Spiel, Voice-Chat, ...). Willst du den Ton anders abmischen,
+importierst du `shorts/short_01.xml` genauso wie die große Timeline: eine Hochkant-Timeline, in der
+jede Spur auf einer eigenen Tonspur liegt und der fertige Mix ausgeschaltet ist. Die Untertitel
+sind fest im Bild. Mit `shorts.separate_audio: false` in deiner Config bekommst du Shorts mit nur
+einer Tonspur und ohne Timeline. Hat deine Aufnahme nur eine Tonspur, ist das immer so.
 
 ## Let's-Play-Modus: Folgen statt Highlights
 
@@ -292,6 +300,27 @@ denselben Befehl erneut aus und nightcut macht dort weiter, wo es aufgehört hat
 einzelnen Schritt wiederholen: `--force vision` (oder `audio`, `transcript`,
 `candidates`, `edit`, `render`, `export`, `shorts`, `metadata`; im Let's-Play-Modus
 `audio`, `scan`, `transcript`, `cuts`, `episodes`, `export`, `metadata`).
+
+## Der Ordner ist schon da? Jeder Lauf bekommt seinen eigenen
+
+nightcut macht nur in einem Ordner weiter, in dem genau dieser Lauf liegt: dieselbe Aufnahme,
+dieselben Einstellungen, dieselbe nightcut-Version. Liegt in `output/<aufnahme>` etwas anderes,
+bleibt der Ordner unangetastet und der neue Lauf schreibt nach `output/<aufnahme>_2`, danach
+`_3` und so weiter. Das gilt für:
+
+- eine andere Aufnahme mit demselben Dateinamen,
+- dieselbe Aufnahme mit anderen Einstellungen (Config, Spielprofil, Modus, andere Aufnahmen in der Serie),
+- einen Lauf einer älteren nightcut-Version,
+- eigene Dateien, die nicht von nightcut stammen.
+
+Welcher Ordner benutzt wird, steht in den ersten Zeilen des Laufs und am Ende beim Pfad der
+Timeline. So landen nie Ergebnisse von zwei Läufen im selben Ordner. Alte Ordner löscht nightcut
+nicht, das machst du selbst, wenn du sie nicht mehr brauchst.
+
+Du hast nur etwas an den Einstellungen geändert und willst nicht alles neu rechnen? Dann sag mit
+`--force <schritt>`, ab wo neu gerechnet wird. Mit `--force` bleibt nightcut im Ordner des
+bisherigen Laufs dieser Aufnahme. Fehlen dort Dateien eines fertigen Schritts (zum Beispiel
+gelöschte Clips in `media/`), rechnet nightcut diesen Schritt und alles danach von selbst neu.
 
 ## Zwei NVIDIA-Grafikkarten
 
@@ -359,7 +388,8 @@ ohne programmieren zu können:
 
 **So probierst du Änderungen schnell aus:** Nach einer Änderung am Profil musst du nicht die ganze
 Nacht neu rechnen. `--force candidates` wiederholt nur die Auswahl und alles danach; Audio und
-Transkript kommen aus dem Zwischenspeicher. Vergleich dann `report.md`: Dort steht zu jedem Clip,
+Transkript kommen aus dem Zwischenspeicher. Ohne `--force` startet nightcut nach einer Änderung
+einen komplett neuen Lauf in einem neuen Ordner (`<aufnahme>_2`). Vergleich dann `report.md`: Dort steht zu jedem Clip,
 warum er gewählt wurde.
 
 ## Mit Hermes Agent nutzen

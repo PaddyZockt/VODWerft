@@ -159,6 +159,22 @@ shorts:
   count: 3
   min_s: 10
   max_s: 59
+  # true: behind the finished mix the Short keeps the single audio tracks (mic, game, voice chat, ...),
+  # and short_01.xml next to it puts them on separate tracks in your editor. Players and upload sites
+  # only take the first track, the finished mix. false: one audio track only, no timeline.
+  # Clip judge: the local text model rates the strongest candidates for fun, story and clarity, and the
+  # Shorts are chosen from that instead of only by loudness. judge.md in the output folder shows every verdict.
+  judge:
+    enabled: true
+    model: null             # default: the editor model
+    max_candidates: 40      # only the strongest are judged (one model call each)
+    criteria: null          # free text in English or German; null = built-in default. A game profile can set judge.criteria
+    weights: { entertaining: 0.45, complete: 0.35, understandable: 0.20 }
+    signal_weight: 0.15     # share of the old loudness/picture score in the final rating (0..1)
+    reject_penalty: 0.5     # rejected clips ("no") are rated times this, so they rank last
+    allow_rejected: false   # false: a rejected clip is never a Short, even if fewer than `count` remain
+    min_gap_s: 60           # two Shorts never start within this many seconds
+  separate_audio: false     # VODWerft/VODWerft: aus (Nightcut selbst: true). Einschalten, wenn die Einzelspuren im Short gewünscht sind
   font: Bebas Neue          # must be installed, or put the .ttf into fonts_dir
   fonts_dir: null
   font_size: 120

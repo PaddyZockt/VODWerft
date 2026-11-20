@@ -7,6 +7,8 @@ from pathlib import Path
 import yaml
 
 import description_template
+import transitions
+import youtube_fields
 from atomic import atomic_write
 from game_library import find as find_preset
 from retention import write
@@ -20,6 +22,9 @@ THUMBNAIL_THEME_KEYS = ("accent", "text_color", "background", "font", "show_bar"
 # Programmweite Angaben stehen nur in der Hauptdatei; Zusatzprofile erben sie, wenn sie dort fehlen.
 # upload_incoming gehört bewusst nicht dazu: Fehlt es in einem Profil, heißt das "nicht hochladen".
 INHERITED_KEYS = ("ffmpeg_directory", "ollama")
+
+
+UNCHANGED = object()  # Aufrufer, die den Übergang nicht kennen, lassen ihn, wie er ist
 
 
 def read_settings(path):
@@ -56,7 +61,8 @@ def render_settings(config):
 
 
 def save_profile(main, path, *, minutes, mode, audio_track, split, style, manual, weekdays,
-                 approval=False, mission_start=False, clone_name=None, caption_style=None, thumbnail_theme=None):
+                 approval=False, mission_start=False, plan_review=False, transition=UNCHANGED, clone_name=None, caption_style=None, thumbnail_theme=None,
+                 youtube=UNCHANGED):
     """Speichert ein Profil. caption_style: None lässt den vorhandenen Clip-Stil unverändert (beim Klonen wird
     er mitkopiert), ein Dict ersetzt ihn, ein leeres Dict entfernt ihn (Standard-Stil)."""
     if caption_style is not None and not isinstance(caption_style, dict):
@@ -83,7 +89,8 @@ def save_profile(main, path, *, minutes, mode, audio_track, split, style, manual
             raise ValueError("Ein zugehöriger Ordner oder ein Profil existiert bereits.")
         # Copy processing defaults and avoid carrying over game-specific release or mission rules.
         for key in ("additional_profiles", "initial_recording", "mission_export", "description", "title_suffix",
-                    "publish_after_date", "recording_date", "retention_hold", "retention_enabled", "upload_gate"):
+                    "publish_after_date", "recording_date", "retention_hold", "retention_enabled", "upload_gate",
+                    "youtube_playlist", "youtube_tags", "collab_partners"):
             config.pop(key, None)
         game = work / "game.yaml"
         config.update(series=name, job_prefix=prefix, input=str(inbox), work=str(work),
@@ -123,6 +130,38 @@ def save_profile(main, path, *, minutes, mode, audio_track, split, style, manual
     config.update(nightcut_config=str(effective), audio_track=audio_track, obs_split_audio=split,
                   thumbnail_style=style, manual_release=manual, publish_weekdays=weekdays,
                   require_approval=approval, require_mission_start=bool(mission_start and config.get("mission_export")))
+    # Übergang an Schnitten: None = "wie in den Einstellungen" (Schlüssel entfernen), sonst die Art; UNCHANGED lässt ihn
+    if transition is not UNCHANGED:
+        if transition is None:
+            config.pop("uebergang", None)
+        elif transitions.valid(transition):
+            config["uebergang"] = transition
+        else:
+            raise ValueError("Unbekannter Übergang.")
+    # "Plan prüfen": nur ein Haken schreibt den Schlüssel. Ohne Haken und ohne früheren Eintrag gilt die globale
+    # Einstellung weiter; wer den Haken wieder entfernt, bekommt ein ausdrückliches "aus" für dieses Spiel.
+    if plan_review:
+        config["plan_pruefen"] = True
+    elif "plan_pruefen" in config:
+        config["plan_pruefen"] = False
+    # YouTube-Angaben (Playlist, feste Tags, Collab-Partner): leer entfernt den Eintrag, UNCHANGED lässt ihn
+    # (beim Duplizieren zeigt der Editor die Angaben des Quellprofils: das neue Spiel bekommt sie nie)
+    if youtube is not UNCHANGED and clone_name is None:
+        if not isinstance(youtube, dict):
+            raise ValueError("Die YouTube-Angaben haben ein ungültiges Format.")
+        playlist = (youtube.get("playlist") or "").strip()
+        if playlist and not youtube_fields.playlist_id(playlist):
+            raise ValueError("Die Playlist-Kennung oder der Link ist ungültig. "
+                             "Beispiel: https://www.youtube.com/playlist?list=PL…")
+        if any("=" not in part for part in re.split(r"[;\n]", youtube.get("collab") or "") if part.strip()):
+            raise ValueError("Collab-Partner: bitte „Suchtext = Kanalname“ schreiben, mehrere mit Semikolon.")
+        for key, value in (("youtube_playlist", youtube_fields.playlist_id(playlist)),
+                           ("youtube_tags", youtube_fields.parse_tags(youtube.get("tags"))),
+                           ("collab_partners", youtube_fields.parse_collab(youtube.get("collab")))):
+            if value:
+                config[key] = value
+            else:
+                config.pop(key, None)
     if caption_style is not None:
         block = {key: caption_style[key] for key in CAPTION_STYLE_KEYS if key in caption_style}
         if block:

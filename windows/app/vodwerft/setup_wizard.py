@@ -149,6 +149,13 @@ class Wizard(tk.Tk):
         self.yt_state = tk.StringVar()
         ttk.Label(self.body, textvariable=self.yt_state, font=(theme.FONT, 11, "bold")).pack(anchor="w", pady=6)
         ttk.Button(self.body, text="Zugangsdatei auswählen …", command=self.pick_client).pack(anchor="w", pady=3)
+        # Das Recht "Playlists verwalten" ist weitreichender als "Videos hochladen": nur auf ausdrücklichen Wunsch anfordern
+        self.playlist_scope = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.body, text="Auch Playlists zuordnen (zusätzliches Recht bei YouTube)",
+                        variable=self.playlist_scope).pack(anchor="w", pady=(10, 0))
+        ttk.Label(self.body, text="Nur nötig, wenn du in einem Spielprofil eine Playlist einträgst. Ohne dieses Recht wird "
+                  "hochgeladen, aber nicht einsortiert. Du kannst die Anmeldung später mit dieser Option wiederholen.",
+                  style="Muted.TLabel", wraplength=560, justify="left").pack(anchor="w", padx=22, pady=(0, 6))
         self.login_button = ttk.Button(self.body, text="Bei YouTube anmelden", command=self.start_login)
         self.login_button.pack(anchor="w", pady=3)
         ttk.Label(self.body, text="Du kannst das auch später nachholen: Der Upload bleibt gesperrt, bis die Anmeldung steht.",
@@ -176,13 +183,14 @@ class Wizard(tk.Tk):
 
     def start_login(self):
         import threading
-        from youtube_login import login
+        from youtube_login import SCOPE, SCOPE_PLAYLISTS, login
+        scope = SCOPE_PLAYLISTS if self.playlist_scope.get() else SCOPE
         self.login_button.state(["disabled"])
         self.yt_state.set("Browser öffnet sich … bitte dort anmelden")
 
         def work():
             try:
-                login(logic.secrets_dir(self.data_dir.get().strip()))
+                login(logic.secrets_dir(self.data_dir.get().strip()), scope=scope)
                 message = None
             except (ValueError, PermissionError, TimeoutError) as error:
                 message = str(error)

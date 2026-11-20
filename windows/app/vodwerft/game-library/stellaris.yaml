@@ -18,3 +18,8 @@ vision_hints: |
   empire) appearing, megastructures completing, a planet being conquered.
   Distinguish all of these from loading screens, the new-game setup screen, long idle
   fast-forward without decisions and AFK.
+
+# Clip-Richter: Was ein guter Short in diesem Spiel ist (freier Text, wird dem lokalen Modell als Maßstab gegeben)
+judge:
+  criteria: >-
+    Stellaris is a grand strategy game where most time goes into menus. A good Short has a surprising event or crisis, a funny event text or decision outcome, a dramatic war moment, a betrayal in diplomacy, or a clear funny reaction. Reject: menu browsing, policy and trade setup, reading tooltips, planning talk, greetings and goodbyes.

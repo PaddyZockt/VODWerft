@@ -21,7 +21,8 @@ def history(folder, key):
 def retry_render(folder, key):
     with closing(sqlite3.connect(folder / "jobs.sqlite3", timeout=3)) as db, db:
         db.execute("BEGIN IMMEDIATE")
-        row = db.execute("SELECT source FROM recordings WHERE key=? AND status='review'", (key,)).fetchone()
+        row = db.execute("SELECT source FROM recordings WHERE key=? AND status IN ('review', 'stopped')",
+                         (key,)).fetchone()  # 'stopped': vom Nutzer gestoppt, jetzt fortsetzen
         if row is None:
             raise ValueError("Für diesen Auftrag kann der Export gerade nicht wiederholt werden.")
         from pathlib import Path

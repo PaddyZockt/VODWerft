@@ -14,14 +14,19 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+import patch_notes
+import update_cleanup
 import version
 
 DEFAULT_REPO = "PaddyZockt/VODWerft"
 ASSET = "VODWerft-Setup.exe"
+PACKAGE_PREFIX = "vodwerft-update-"   # Ordner im Temp-Verzeichnis, in den `prepare` das Setup lädt
+KEEP_SECONDS = 3600                  # jünger als eine Stunde: könnte ein Setup sein, das gerade noch läuft
 API = "https://api.github.com/repos/{repo}/releases?per_page=20"
 TIMEOUT = 20
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -73,12 +78,50 @@ def newest(items):
     return (best[1], best[2]) if best else ("", None)
 
 
+def cleanup(temp=None, *, now=None, keep=()):
+    """Löscht Setup-Pakete früherer Updates (`vodwerft-update-*` im Temp-Ordner, älter als eine Stunde). Bisher blieb nach
+    jedem Update eine Setup-Datei von mehreren MB liegen. Nie ein Fehler: Das Aufräumen darf kein Update verhindern."""
+    now = time.time() if now is None else now
+    protected = {Path(k).resolve() for k in keep}
+    try:
+        folders = update_cleanup._folders(temp or tempfile.gettempdir())
+    except OSError:
+        return
+    for folder in folders:
+        try:
+            if (folder.name.startswith(PACKAGE_PREFIX) and folder.resolve() not in protected
+                    and now - folder.stat().st_mtime > KEEP_SECONDS):
+                update_cleanup.rmtree(folder)
+        except OSError:
+            continue  # gesperrt (läuft noch?): die übrigen kommen trotzdem dran
+
+
 def check(repo=DEFAULT_REPO):
     """Gibt (installiert, neueste, verfuegbar) zurueck."""
+    cleanup()
     current = installed()
     latest, _ = newest(releases(repo))
     available = bool(latest) and (not current or (sort_key(latest) or ()) > (sort_key(current) or ()))
     return current, latest, available
+
+
+def resolve(label, repo=DEFAULT_REPO):
+    """Gleiche Schnittstelle wie self_update.resolve: beim Einspielen den neuesten Stand nehmen. Ohne Verbindung
+    bleibt es beim gemerkten Stand."""
+    try:
+        latest, _ = newest(releases(repo))
+    except UpdateError:
+        return label
+    return latest if latest and (sort_key(latest) or ()) > (sort_key(label) or ()) else label
+
+
+def notes(label, repo=DEFAULT_REPO):
+    """Patch Notes für das Update `label`: die Beschreibungen aller Releases, die neuer sind als die installierte
+    Version (bis einschließlich `label`). Nie ein Fehler: ohne Verbindung kommt ein leerer Text."""
+    try:
+        return patch_notes.from_releases(releases(repo), installed(), label)
+    except UpdateError:
+        return ""
 
 
 def prepare(latest, repo=DEFAULT_REPO):
@@ -87,7 +130,8 @@ def prepare(latest, repo=DEFAULT_REPO):
     if release is None or tag != latest:
         raise UpdateError("Diese Version ist nicht mehr verfuegbar. Bitte erneut nach Updates suchen.")
     asset = next(a for a in release["assets"] if a.get("name") == ASSET)
-    target = Path(tempfile.mkdtemp(prefix="vodwerft-update-")) / ASSET
+    cleanup()
+    target = Path(tempfile.mkdtemp(prefix=PACKAGE_PREFIX)) / ASSET
     digest = hashlib.sha256()
     try:
         with urllib.request.urlopen(_request(asset["browser_download_url"]), timeout=TIMEOUT) as response, \
@@ -109,7 +153,8 @@ def prepare(latest, repo=DEFAULT_REPO):
 
 
 def start(package):
-    """Startet das Setup-Programm; es fragt selbst nach Administratorrechten."""
+    """Startet das Setup-Programm; es fragt selbst nach Administratorrechten, beendet laufende Teile von VODWerft (nicht,
+    solange ein Auftrag läuft) und startet das Programm danach mit den Rechten des Nutzers wieder."""
     if sys.platform != "win32":
         raise UpdateError("Das Einspielen funktioniert nur unter Windows.")
-    subprocess.Popen([str(package), "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"], cwd=str(Path(package).parent))
+    subprocess.Popen([str(package), "/SILENT"], cwd=str(Path(package).parent))

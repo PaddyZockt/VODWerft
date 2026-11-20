@@ -21,12 +21,19 @@ uploaded anywhere; all models run on your own GPU.
 | Edit | Local LLM picks and orders clips to your target length | `edit.json`, title ideas |
 | Media | Clips are cut into clean MP4s (gameplay with all audio tracks, facecam separately) | `media/` |
 | Timeline | Final Cut Pro 7 XML, imports into Resolve and Premiere | `<name>_nightcut.xml` |
-| Shorts | Vertical 1080x1920 clips with word-by-word captions | `shorts/` |
+| Shorts | Vertical 1080x1920 clips with word-by-word captions. Ready to upload, and the single audio tracks stay in the file for a new balance in your editor (`short_01.xml`) | `shorts/` |
 | Metadata | Title ideas, description, chapters, tags (AI drafts: check that what they promise really happens) | `youtube.txt` |
 | Report | Clip list, title ideas, time and VRAM per step | `report.md` |
 
 Every step is cached. If the night is interrupted, run the same command again and it
 continues where it stopped.
+
+**One folder per run.** nightcut only continues in a folder that holds exactly this run: the same
+recording, the same settings, the same nightcut version. If `output/<recording>` holds anything
+else (another recording with the same file name, a run with other settings or of an older
+nightcut, your own files), that folder is left as it is and the new run writes to
+`output/<recording>_2`, then `_3` and so on. The first lines of the run say which folder is used.
+So results of two runs never get mixed; delete the folders you no longer need yourself.
 
 ## Requirements
 
@@ -219,7 +226,9 @@ nightcut does not learn on its own. You can tune it in three places without writ
    changes; for changes across several files, large cloud models are much more reliable.
 
 **Trying changes quickly:** after editing a profile, `--force candidates` repeats only the clip
-selection and what follows it; audio and transcript come from the cache. Then compare `report.md`,
+selection and what follows it; audio and transcript come from the cache. With `--force` nightcut
+stays in the folder of the earlier run of this recording; without it, changed settings start a
+complete new run in a new folder (`<recording>_2`). Then compare `report.md`,
 which says for every clip why it was picked.
 
 ## Let's Play mode
@@ -294,6 +303,13 @@ itself (ports from 11435); your normal Ollama keeps running. Let's Play mode sti
 Clips have handles (extra seconds before and after) so you can trim freely. Each clip
 carries a marker with the reason it was chosen.
 
+**Shorts:** `shorts/short_01.mp4` is ready to upload: players and upload sites take its first audio
+track, the finished mix. Behind it the file carries the single tracks of the recording (mic, game,
+voice chat, ...). To balance them again, import `shorts/short_01.xml` the same way: a vertical
+timeline with every track on its own audio track and the finished mix switched off. The captions
+are part of the picture. `shorts.separate_audio: false` gives Shorts with one audio track and no
+timeline. Recordings with one audio track always give such Shorts.
+
 ## Using it with Hermes Agent
 
 Copy `hermes/nightcut` into your Hermes skills folder. Hermes can then run nightcut on
@@ -319,7 +335,8 @@ nightcut --version
 length with quiet ones, or rather make a shorter video. Without the option nightcut asks at start
 (`editor.fill` in your config answers it for good; without a terminal it fills up).
 
-Stages for `--force`: highlights: `audio`, `transcript`, `killfeed`, `candidates`, `vision`, `edit`, `render`,
+`--force <stage>` makes a stage and everything after it again, in the folder of the earlier run of
+this recording (also after you changed settings). Stages for `--force`: highlights: `audio`, `transcript`, `killfeed`, `candidates`, `vision`, `edit`, `render`,
 `export`, `shorts`, `metadata`. Let's Play: `audio`, `scan`, `transcript`, `cuts`, `episodes`,
 `export`, `metadata`.
 

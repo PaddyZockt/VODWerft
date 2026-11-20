@@ -32,6 +32,11 @@ def read_metadata(path, *, allow_publish=False):
     publish_at = metadata.get("publishAt")
     if not allow_publish and (privacy != "private" or publish_at):
         raise ValueError("The current worker accepts private uploads only")
+    if "containsSyntheticMedia" in metadata and not isinstance(metadata["containsSyntheticMedia"], bool):
+        raise ValueError("containsSyntheticMedia must be true or false")
+    playlist = metadata.get("playlistId")
+    if playlist is not None and not (isinstance(playlist, str) and re.fullmatch(r"[A-Za-z0-9_-]{10,64}", playlist)):
+        raise ValueError("Invalid playlistId")
     if publish_at:
         if not isinstance(publish_at, str):
             raise ValueError("publishAt must be an ISO date and time")

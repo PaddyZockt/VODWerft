@@ -2,8 +2,8 @@
 
 Standard-Verfahren fuer Desktop-Programme: Der Browser oeffnet die Google-Anmeldung, Google ruft danach
 http://127.0.0.1:<Port> auf diesem Rechner auf. Das Passwort sieht dieses Programm nie. Gespeichert wird nur das
-Anmelde-Token (request.token) im Ordner neben client_secrets.json. Berechtigung: nur Videos hochladen/Vorschaubilder setzen.
-Aufruf:  python youtube_login.py <Ordner mit client_secrets.json>
+Anmelde-Token (request.token) im Ordner neben client_secrets.json. Berechtigung: Videos hochladen/Vorschaubilder setzen (mit --playlists zusätzlich Playlists verwalten).
+Aufruf:  python youtube_login.py <Ordner mit client_secrets.json> [--playlists]
 """
 import base64
 import hashlib
@@ -20,6 +20,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from resumable_upload import request
 
 SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+# Mit diesem Recht kann der Upload-Dienst ein Video auch einer Playlist zuordnen (Profil: "Playlist")
+SCOPE_PLAYLISTS = "https://www.googleapis.com/auth/youtube"
 PAGE = ("<html><meta charset='utf-8'><body style='font-family:sans-serif;margin:3em'>"
         "<h2>{}</h2><p>Du kannst dieses Fenster schliessen.</p></body></html>")
 
@@ -35,7 +37,7 @@ def load_client(directory):
     return client
 
 
-def login(directory, *, opener=webbrowser.open, transport=request, timeout=300):
+def login(directory, *, opener=webbrowser.open, transport=request, timeout=300, scope=SCOPE):
     directory = Path(directory)
     client = load_client(directory)
     verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode()
@@ -68,7 +70,7 @@ def login(directory, *, opener=webbrowser.open, transport=request, timeout=300):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         opener(client["auth_uri"] + "?" + urlencode({
-            "client_id": client["client_id"], "redirect_uri": redirect, "response_type": "code", "scope": SCOPE,
+            "client_id": client["client_id"], "redirect_uri": redirect, "response_type": "code", "scope": scope,
             "access_type": "offline", "prompt": "consent", "state": state,
             "code_challenge": challenge, "code_challenge_method": "S256"}))
         if not done.wait(timeout):
@@ -101,9 +103,11 @@ def login(directory, *, opener=webbrowser.open, transport=request, timeout=300):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    arguments = [a for a in sys.argv[1:] if a != "--playlists"]
+    if len(arguments) != 1:
         sys.exit(__doc__)
     try:
-        print("Token gespeichert:", login(sys.argv[1]))
+        # "--playlists": zusätzlich das Recht, Videos Playlists zuzuordnen
+        print("Token gespeichert:", login(arguments[0], scope=SCOPE_PLAYLISTS if "--playlists" in sys.argv else SCOPE))
     except (OSError, ValueError, PermissionError, TimeoutError) as error:
         sys.exit(f"Anmeldung fehlgeschlagen: {error}")

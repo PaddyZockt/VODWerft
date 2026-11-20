@@ -288,10 +288,35 @@ def process(marker):
             api.thumbnail(video_id, cover)
             atomic_write(thumbnail_done, "1")
             setting_thumbnail = False
+        # Playlist: nie ein Grund, ein fertiges Video als "Prüfung nötig" zu melden. Klappt es nicht (z. B. fehlendes
+        # YouTube-Recht), steht der Grund im Protokoll und in result.json.
+        playlist_note = None
+        playlist = meta.get("playlistId")
+        if playlist and not (job / "playlist-done").is_file():
+            for attempt in range(4):  # vorübergehende Fehler (Netz, 429, 5xx): kurz warten und noch einmal
+                try:
+                    api.add_to_playlist(video_id, playlist)
+                    atomic_write(job / "playlist-done", "1")
+                    playlist_note = None
+                    break
+                except UploadError as error:
+                    playlist_note = error.reason
+                    if not error.retry or error.auth or attempt == 3:
+                        break
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    playlist_note = type(error).__name__
+                    break
+                time.sleep(5 * 3 ** attempt)  # 5, 15, 45 Sekunden
+            if playlist_note:
+                log(f"{stem}: Playlist-Zuordnung nicht möglich ({playlist_note}).")
         files = [marker, video, metadata] + ([cover] if cover else [])
         result = {"state": "uploaded", "video_id": video_id, "time": int(time.time()), "exit_code": 0}
+        if playlist_note:
+            result["playlist_failed"] = playlist_note
         archive(files, UPLOADED, stem, result)
-        status("uploaded", video_id=video_id, cover=(UPLOADED / stem / cover.name) if cover else None)
+        # Bei fehlgeschlagener Playlist-Zuordnung steht der Grund in der Statusmeldung: Das Dashboard zeigt es an
+        status("uploaded", video_id=video_id, cover=(UPLOADED / stem / cover.name) if cover else None,
+               reason="playlist_failed" if playlist_note else None)
         marker.unlink(missing_ok=True)
         log(f"{stem}: uploaded ({video_id})")
     except UploadError as error:

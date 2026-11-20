@@ -9,10 +9,13 @@ from tkinter import filedialog, messagebox, ttk
 import yaml
 
 import caption_style_editor
+import clip_criteria
 import description_template
 import thumbnail_style_editor
 import game_library
 import theme
+import transitions
+import youtube_fields
 from dashboard_data import problem
 from game_profiles import profile_paths, read_settings, render_settings, save_profile
 
@@ -20,6 +23,8 @@ from game_profiles import profile_paths, read_settings, render_settings, save_pr
 DAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 MODES = {"Folgen nach Länge": "by_length", "Eine Folge pro Aufnahme": "per_recording"}
 STYLES = {"Projekt und Folgenzahl / Mission": "numbered", "Nur Projektname": "project"}
+INHERIT = "Wie in den Einstellungen"
+TRANSITION_CHOICES = {INHERIT: None, **{transitions.LABELS[kind]: kind for kind in transitions.KINDS}}
 SAVED_HINT = "Änderungen gelten für neue Aufnahmen. Bereits gestartete Aufträge behalten ihre Einstellungen."
 
 
@@ -90,6 +95,11 @@ def build(parent, main, on_save):
     manual = tk.BooleanVar(frame)
     approval = tk.BooleanVar(frame)
     mission_start = tk.BooleanVar(frame)
+    plan_review = tk.BooleanVar(frame)
+    transition = tk.StringVar(frame, value=INHERIT)
+    playlist = tk.StringVar(frame)
+    tags = tk.StringVar(frame)
+    collab = tk.StringVar(frame)
     days = [tk.BooleanVar(frame) for _ in DAYS]
     new_name = tk.StringVar(frame)
     paths = []
@@ -149,6 +159,12 @@ def build(parent, main, on_save):
     thumb_button = ttk.Button(thumb_row, text="Thumbnail-Stil …")
     thumb_button.pack(side="left")
     add("Thumbnail-Stil", thumb_row)
+    add("Übergang an Schnitten", ttk.Combobox(fields, textvariable=transition, values=list(TRANSITION_CHOICES),
+                                              state="readonly", width=34),
+        help_text="Wie ein Schnitt innerhalb einer Folge aussieht. Die Länge der Folge ändert sich nicht.")
+    add("Schnittplan", ttk.Checkbutton(fields, text="Plan nach der Analyse von Hand prüfen (Bereiche entfernen)",
+                                       variable=plan_review),
+        help_text="Aus: alles läuft automatisch. An: Der Auftrag hält nach der Analyse an, bis du den Plan bestätigst.")
     section("HOCHKANT-CLIPS", "clips")
     caption_row = ttk.Frame(fields)
     caption_swatch = tk.Label(caption_row, width=4, relief="solid", borderwidth=1, cursor="hand2")
@@ -158,11 +174,31 @@ def build(parent, main, on_save):
     caption_button = ttk.Button(caption_row, text="Clip-Stil …")
     caption_button.pack(side="left")
     add("Untertitel", caption_row, "clips")
+    criteria_row = ttk.Frame(fields)
+    criteria_info = ttk.Label(criteria_row, style="Muted.TLabel")
+    criteria_info.pack(side="left", padx=(0, 10))
+    criteria_button = ttk.Button(criteria_row, text="Kriterien bearbeiten …")
+    criteria_button.pack(side="left")
+    add("Was ist ein guter Clip?", criteria_row, "clips",
+        help_text="Danach bewertet die lokale KI die Clip-Kandidaten und wählt die Shorts aus. Beschreibe in eigenen "
+                  "Worten, was in diesem Spiel einen guten Clip ausmacht (Pointe, Missgeschick, Überraschung) und "
+                  "was nicht (Menüs, Erklärungen).")
     section("BESCHREIBUNG", column=1)
     description_button = ttk.Button(fields, text="Beschreibungsvorlage bearbeiten…")
     add("Text für alle Folgen", description_button,
         help_text="Diese Beschreibung bekommt jede Folge dieses Spiels, mit deinen Links und deiner Hardware. "
                   "Die Kapitelmarken hängt das Programm selbst an. Ohne Vorlage schreibt die KI jede Beschreibung neu.")
+    section("YOUTUBE")
+    add("Playlist", ttk.Entry(fields, textvariable=playlist, width=36),
+        help_text="Link oder Kennung der Playlist dieses Spiels. Jede Folge wird nach dem Hochladen dort eingeordnet. "
+                  "Dafür braucht die YouTube-Anmeldung das Recht „Playlists verwalten“.")
+    add("Feste Tags", ttk.Entry(fields, textvariable=tags, width=36),
+        help_text="Mit Komma getrennt, zum Beispiel: Let's Play, Gaming. Sie kommen zu den Tags der KI dazu. "
+                  "Tags haben bei YouTube nur geringe Wirkung (vor allem bei Falschschreibungen).")
+    add("Collab-Partner", ttk.Entry(fields, textvariable=collab, width=36),
+        help_text="Suchtext aus dem Dateinamen = Kanalname, mehrere mit Semikolon, zum Beispiel: Meine Gruppe = "
+                  "Name des Kanals. YouTube erlaubt das Setzen nur in Studio; im Auftrag steht dann ein "
+                  "Hinweis, wen du einladen musst.")
     section("VERÖFFENTLICHUNG")
     add("Termine", ttk.Checkbutton(fields, text="Im Kalender selbst auswählen", variable=manual))
     day_bar = ttk.Frame(fields)
@@ -188,7 +224,8 @@ def build(parent, main, on_save):
 
     def snapshot():
         return (mode.get(), minutes.get().strip(), audio.get().strip(), split.get(), style.get(), manual.get(),
-                approval.get(), mission_start.get(), tuple(day.get() for day in days))
+                approval.get(), mission_start.get(), plan_review.get(), transition.get(), tuple(day.get() for day in days),
+                playlist.get().strip(), tags.get().strip(), collab.get().strip())
 
     def dirty():
         return state["saved"] is not None and (snapshot() != state["saved"] or state["caption_changed"]
@@ -283,6 +320,75 @@ def build(parent, main, on_save):
         ttk.Button(buttons, text="Speichern", command=store).pack(side="right")
         ttk.Button(buttons, text="Abbrechen", command=window.destroy).pack(side="right", padx=(0, 8))
 
+    criteria_labels = {clip_criteria.SOURCE_PROFILE: "Eigene Kriterien",
+                       clip_criteria.SOURCE_LIBRARY: "Standard für dieses Spiel",
+                       clip_criteria.SOURCE_DEFAULT: "Allgemeiner Standard"}
+
+    def show_criteria(config):
+        criteria_info.configure(text=criteria_labels[clip_criteria.effective(config)[1]])
+
+    def edit_criteria():
+        try:
+            config = read_settings(selected_path())
+        except (OSError, ValueError, KeyError, yaml.YAMLError) as error:
+            hint.configure(text=problem("Die Kriterien konnten nicht geöffnet werden.", error, "Clip-Kriterien lesen"),
+                           style="Danger.TLabel")
+            return
+        series = config.get("series", "")
+        window = tk.Toplevel(frame)
+        window.title("Was ist ein guter Clip?")
+        window.geometry("760x420")
+        window.transient(frame.winfo_toplevel())
+        ttk.Label(window, style="Muted.TLabel", wraplength=720, justify="left", text=(
+            "So bewertet die lokale KI die Clip-Kandidaten dieses Spiels, bevor die Hochkant-Clips ausgewählt werden. "
+            "Schreib in eigenen Worten (Deutsch oder Englisch), was einen guten Clip ausmacht und was nicht. "
+            "Clips, die die KI ablehnt, werden nicht genommen: lieber weniger, dafür gute.")).pack(
+                anchor="w", padx=12, pady=(12, 0))
+        box = tk.Text(window, wrap="word", undo=True, font=("Segoe UI", 10), height=10)
+        box.insert("1.0", clip_criteria.effective(config)[0])
+        box.pack(fill="both", expand=True, padx=12, pady=(8, 6))
+        counter = ttk.Label(window, style="Muted.TLabel")
+        counter.pack(anchor="w", padx=12)
+
+        def count(_=None):
+            counter.configure(text=f"{len(box.get('1.0', 'end').strip())} von {clip_criteria.LIMIT} Zeichen")
+
+        box.bind("<<Modified>>", lambda _: (count(), box.edit_modified(False)))
+        count()
+
+        def reset():
+            box.delete("1.0", "end")
+            box.insert("1.0", clip_criteria.default_text(series))
+
+        def store():
+            try:
+                value = clip_criteria.to_store(box.get("1.0", "end"), series)
+                config_now = read_settings(selected_path())
+                if value is None:
+                    config_now.pop(clip_criteria.KEY, None)
+                else:
+                    config_now[clip_criteria.KEY] = value
+                from retention import write
+                write(selected_path(), config_now)
+            except ValueError as error:
+                messagebox.showerror("Was ist ein guter Clip?", str(error), parent=window)
+                return
+            except (OSError, KeyError, yaml.YAMLError) as error:
+                messagebox.showerror("Was ist ein guter Clip?", problem(
+                    "Die Kriterien konnten nicht gespeichert werden.", error, "Clip-Kriterien speichern"),
+                    parent=window)
+                return
+            window.destroy()
+            show_criteria(config_now)
+            hint.configure(text="Kriterien gespeichert. Sie gelten für neue Clip-Läufe.", style="Success.TLabel")
+
+        buttons = ttk.Frame(window)
+        buttons.pack(fill="x", padx=12, pady=12)
+        ttk.Button(buttons, text="Speichern", command=store).pack(side="right")
+        ttk.Button(buttons, text="Abbrechen", command=window.destroy).pack(side="right", padx=(0, 8))
+        ttk.Button(buttons, text="Standard wiederherstellen", command=reset).pack(side="left")
+
+    criteria_button.configure(command=edit_criteria)
     description_button.configure(command=edit_description)
     thumb_button.configure(command=edit_thumb)
     caption_button.configure(command=edit_caption)
@@ -302,6 +408,13 @@ def build(parent, main, on_save):
             manual.set(bool(config.get("manual_release")))
             approval.set(bool(config.get("require_approval")))
             mission_start.set(bool(config.get("require_mission_start")))
+            plan_review.set(config.get("plan_pruefen") is True)
+            show_criteria(config)
+            playlist.set(config.get("youtube_playlist") or "")
+            tags.set(", ".join(config.get("youtube_tags") or []))
+            collab.set(youtube_fields.collab_text(config.get("collab_partners")))
+            transition.set(next((label for label, kind in TRANSITION_CHOICES.items() if kind == config.get("uebergang")),
+                                INHERIT))
             mission_control.configure(state="normal" if config.get("mission_export") else "disabled")
             for index, day in enumerate(days):
                 day.set(index in config.get("publish_weekdays", (0, 3)))
@@ -363,7 +476,9 @@ def build(parent, main, on_save):
                 audio_track=number(audio, "Tonspur für Spracherkennung", 1, 16) - 1, split=split.get(),
                 style=STYLES[style.get()], manual=manual.get(),
                 weekdays=[index for index, value in enumerate(days) if value.get()],
-                approval=approval.get(), mission_start=mission_start.get(), clone_name=name,
+                approval=approval.get(), mission_start=mission_start.get(), plan_review=plan_review.get(),
+                transition=TRANSITION_CHOICES[transition.get()], clone_name=name,
+                youtube={"playlist": playlist.get(), "tags": tags.get(), "collab": collab.get()},
                 thumbnail_theme=state["thumb"] if state["thumb_changed"] else None)
             reload(path)
             on_save()
@@ -446,7 +561,7 @@ def build(parent, main, on_save):
     ttk.Button(actions, text="Speichern (Strg+S)", command=save).pack(side="left", padx=(0, theme.PAD_BUTTON))
     for label, command in (("Eingang öffnen", open_inbox), ("Tonprobe erstellen", sample)):
         ttk.Button(actions, text=label, command=command).pack(side="left", padx=(0, theme.PAD_BUTTON))
-    for variable in (mode, minutes, audio, split, style, manual, approval, mission_start, *days):
+    for variable in (mode, minutes, audio, split, style, manual, approval, mission_start, plan_review, transition, playlist, tags, collab, *days):
         variable.trace_add("write", mark)
     selector.bind("<<ComboboxSelected>>", switch)
     frame.winfo_toplevel().bind("<Control-s>", save_shortcut, add="+")

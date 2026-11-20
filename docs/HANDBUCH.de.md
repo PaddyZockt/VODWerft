@@ -94,6 +94,8 @@ Zuerst in beiden Modi:
 5. *(Server-Modus)* Die Datei in den Ordner für Zugangsdaten legen (`SECRETS_DIR` aus der `.env`). **Niemals** in ein Repository oder eine Freigabe legen.
 6. *(Server-Modus)* Die Anmeldung im Browser einmal bestätigen. Dabei entsteht die Token-Datei `request.token`.
 
+**Playlist-Recht nachholen:** Wenn du Videos automatisch einer Playlist zuordnen willst, braucht die Anmeldung ein zusätzliches Recht. Neu eingerichtet: Haken „Auch Playlists zuordnen“ im Assistenten. Schon eingerichtet: Öffne eine Eingabeaufforderung im Programmordner (`C:\Program Files\VODWerft`) und führe aus: `venv\Scripts\python.exe vodwerft\youtube_login.py "%LOCALAPPDATA%\VODWerft\uploader\secrets" --playlists`, dann im Browser bestätigen. Beim Server-Betrieb dasselbe in dem Ordner, in dem `client_secrets.json` liegt. (Der Haken im Assistenten ersetzt beim Speichern deine ganze Einrichtung, deshalb ist dieser Weg sicherer.)
+
 **Zwei Einschränkungen von YouTube, die du kennen musst:**
 
 - Videos, die ein **ungeprüftes** API-Projekt (erstellt nach dem 28.07.2020) hochlädt, werden von YouTube auf **privat** gesetzt. Um das aufzuheben, muss das Projekt eine Prüfung (Compliance Audit) bestehen. Bis dahin kannst du VODWerft nutzen, um fertige Videos vorzubereiten, musst sie aber selbst in YouTube Studio veröffentlichen oder manuell hochladen. Bereits gesperrte Videos lassen sich nicht per Einspruch freigeben.
@@ -106,6 +108,16 @@ Zuerst in beiden Modi:
 - **Freigeben:** Fertige Folgen prüfst du und gibst sie frei. Für automatische Uploads legst du `upload-freigabe.flag` im Datenordner an.
 - **Was bei Fehlern passiert:** Dateien, die der Server nicht hochladen kann, landen im Ordner `Pruefen`.
 
+### Weitere Funktionen
+
+- **Plan prüfen (optional):** Unter *Einstellungen → Schnitt* oder pro Spielprofil einschalten. Der Auftrag hält nach der Analyse an („Wartet auf dich“). „Plan prüfen öffnen“ zeigt, was automatisch entfernt wurde; du kannst weitere Bereiche entfernen oder welche behalten und bestätigst dann. Erst danach wird gerendert.
+- **YouTube-Angaben pro Spiel:** *Spielprofile → YouTube*: Playlist, feste Tags und Collab-Partner. Für die Playlist braucht die Anmeldung ein zusätzliches Recht: Setze beim Anmelden im Assistenten den Haken „Auch Playlists zuordnen“. Bist du schon eingerichtet, melde dich einmal neu an, siehe Kapitel 5 („Playlist-Recht nachholen“). Die Einladung eines Collab-Partners und der „Titel des Spiels“ lassen sich nur in YouTube Studio setzen; die Auftragsdetails erinnern dich daran.
+- **Verwendung von KI:** YouTube fragt bei jedem Video, ob KI Inhalte erzeugt oder verändert hat. VODWerft gibt dazu standardmäßig nichts an, du beantwortest es in Studio. Unter *Einstellungen → YouTube* lässt sich bei jedem Upload „Nein“ senden.
+- **Übergänge an Schnitten:** *Einstellungen* oder Spielprofil: hart (Standard), Abblende, Weichzeichner, Weißblitz, Zoom, Pixel. Die Länge der Folge bleibt gleich.
+- **Auftrag stoppen und Restzeit:** Der Knopf „Auftrag stoppen“ in der Auftragsliste beendet einen laufenden Auftrag; „Verlauf → Export erneut versuchen“ setzt ihn fort. Bei Schritten mit Zähler steht „noch etwa 12 Min.“ in den Auftragsdetails.
+- **Bibliothek (Server-Betrieb):** Neben `Fertig` entsteht `Bibliothek\<Spiel>` mit einer Verknüpfung je hochgeladener Folge (Doppelklick öffnet das Video auf YouTube).
+- **Meldungen und Speicherplatz:** Windows meldet, wenn ein Auftrag auf dich wartet oder fertig ist (*Einstellungen → Darstellung* schaltet das ab). Reicht der Platz auf dem Arbeitslaufwerk nicht, warnt das Dashboard und der Verlauf des Auftrags.
+
 ## 7. Häufige Probleme
 
 | Problem | Lösung |
@@ -115,6 +127,7 @@ Zuerst in beiden Modi:
 | Videos bleiben privat | Siehe Abschnitt 5, erste Einschränkung. Mit „Von Hand hochladen“ tritt das nicht auf |
 | „Manuell hochladen“ fehlt im Tray-Menü | Der Eintrag erscheint nur in der Betriebsart „Von Hand“. Im Assistenten („Einrichtung öffnen“) prüfen |
 | Die Liste unter „Manuell hochladen“ ist leer | Es erscheinen nur freigegebene, fertig bearbeitete Folgen. Mit „Aktualisieren“ neu laden |
+| Die Playlist-Zuordnung schlägt fehl | Die Anmeldung hat das Recht „Playlists verwalten“ nicht. Erneut mit dem Playlist-Recht anmelden (Kapitel 5, „Playlist-Recht nachholen“) |
 | Anmeldung abgelaufen | `request.token` neu erzeugen (Abschnitt 5, Punkt 6) |
 | Zu wenig Grafikspeicher | Kleinere Modelle wählen oder anderen Rechner nutzen |
 | Windows warnt beim Installer | Normal, der Installer ist noch nicht signiert. „Weitere Informationen“, „Trotzdem ausführen“ (Kapitel 2) |
@@ -126,4 +139,4 @@ Zuerst in beiden Modi:
 
 ## 8. Aktualisieren
 
-Den neuen `VODWerft-Setup.exe` einfach über die bestehende Installation laufen lassen. Die Einrichtung und deine Daten bleiben erhalten. Beende VODWerft vorher über das Tray-Menü („Beenden“).
+VODWerft sucht beim Start und alle sechs Stunden auf GitHub nach einer neuen Version. Gibt es eine, steht im Dashboard „Update verfügbar“. Ein Klick zeigt zuerst, was neu ist; erst „Jetzt installieren“ lädt und installiert (die Prüfsumme wird kontrolliert). Läuft gerade ein Auftrag, kann das Update auf sein Ende warten. Du kannst den Installer auch von Hand starten: Den neuen `VODWerft-Setup.exe` einfach über die bestehende Installation laufen lassen. Die Einrichtung und deine Daten bleiben erhalten. Beende VODWerft vorher über das Tray-Menü („Beenden“).

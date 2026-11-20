@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan prüfen</title>
+<style id="brand">/*BRAND*/</style>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--background); color:var(--foreground); font:14px/1.45 "Segoe UI",system-ui,sans-serif; }
+  main { max-width:1180px; margin:0 auto; padding:16px; display:grid; gap:12px; }
+  h1 { font-size:18px; margin:0; } .dim { color:var(--muted); }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px; }
+  .stage { position:relative; background:#000; border-radius:8px; cursor:pointer; overflow:hidden; }
+  /* Kein Zeigen auf das Video: so blendet Edge seine eigenen Knöpfe (Bild in Bild, Verbessern, Menü) nicht ein */
+  video { width:100%; max-height:52vh; display:block; pointer-events:none; }
+  .bar { position:relative; height:44px; background:var(--raised); border:1px solid var(--border); border-radius:6px; cursor:pointer; overflow:hidden; margin-top:10px; }
+  .seg { position:absolute; top:0; bottom:0; min-width:2px; }
+  .seg.auto { background:var(--scroll); opacity:.8; } .seg.man { background:var(--warning); }
+  .seg.draft { background:var(--accent); opacity:.6; }
+  .seg.mission { background:var(--accent); opacity:.35; }
+  .seg.keep { background:var(--success); top:auto; height:35%; }
+  .head { position:absolute; top:0; bottom:0; width:2px; background:var(--foreground); pointer-events:none; box-shadow:0 0 0 1px #0007; z-index:2; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button { background:var(--raised); color:var(--foreground); border:1px solid var(--border); border-radius:7px; padding:8px 12px; font:inherit; cursor:pointer; }
+  button:hover { background:var(--hover); } button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  button.primary, button.add { background:var(--check); border-color:var(--check); color:#fff; font-weight:600; }
+  button.primary:hover, button.add:hover { filter:brightness(1.15); } button:disabled { opacity:.5; cursor:default; }
+  input[type=text], select { background:var(--background); color:var(--foreground); border:1px solid var(--border); border-radius:6px; padding:7px; font:inherit; }
+  input[type=text] { width:92px; text-align:center; }
+  input[type=range] { accent-color:var(--accent); }
+  ul { list-style:none; margin:6px 0 0; padding:0; display:grid; gap:4px; }
+  li { display:flex; gap:8px; align-items:center; padding:4px 6px; border-radius:6px; background:var(--raised); }
+  li .t { font-variant-numeric:tabular-nums; flex:1; }
+  .tag { font-size:12px; padding:1px 7px; border-radius:20px; background:var(--background); color:var(--muted); }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
+  #msg { min-height:20px; } .err { color:var(--danger); }
+  .tabs button.on { background:var(--nav-selected); color:var(--nav-selected-text); border-color:var(--accent); }
+  .ticks { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; }
+  kbd { background:var(--raised); border:1px solid var(--border); border-radius:4px; padding:0 5px; }
+  #time { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <div class="row" style="justify-content:space-between">
+    <div><h1>Plan prüfen</h1><div class="dim" id="sub">Lade …</div></div>
+    <div class="row tabs" id="tabs"></div>
+  </div>
+
+  <div class="panel">
+    <div class="stage" id="stage"><video id="v" preload="metadata" disablepictureinpicture disableremoteplayback playsinline></video></div>
+    <audio id="a" preload="auto"></audio>
+    <div class="row" style="margin-top:8px">
+      <button id="pp">▶ Abspielen</button><button id="back">−5 s</button><button id="fwd">+5 s</button>
+      <span id="time" class="dim">0:00:00 / 0:00:00</span>
+      <label>Tempo <select id="rate"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
+      <label>Ton <input type="range" id="vol" min="0" max="1" step="0.05" value="1" style="vertical-align:middle;width:110px"></label>
+    </div>
+    <div id="wait" class="dim" style="margin-top:8px"></div>
+    <div class="row" style="margin-top:10px">
+      <strong>Zeitleiste</strong>
+      <button id="zout" title="Taste −">−</button><button id="zin" title="Taste +">+</button><button id="zall" title="Taste 0">Alles</button>
+      <button id="pl" title="Ausschnitt nach links">◀</button><button id="pr" title="Ausschnitt nach rechts">▶</button>
+      <span id="zoomInfo" class="dim"></span>
+      <span style="flex:1"></span>
+      <button id="prevCut" title="Taste B">◀ Vorherige Stelle (B)</button><button id="nextCut" title="Taste N">Nächste Stelle (N) ▶</button>
+    </div>
+    <div class="bar" id="bar"><div class="head" id="head"></div></div>
+    <div class="ticks"><span id="t0"></span><span id="t1"></span><span id="t2"></span></div>
+    <div class="dim" style="margin-top:4px;font-size:12px">
+      <span style="color:var(--scroll)">■</span> automatisch entfernt &nbsp;
+      <span style="color:var(--warning)">■</span> von dir entfernt &nbsp;
+      <span style="color:var(--success)">■</span> von dir behalten &nbsp;
+      <span style="color:var(--accent);opacity:.5">■</span> vor Missionsbeginn (wird abgeschnitten) &nbsp;
+      <span style="color:var(--accent)">■</span> gerade markiert &nbsp;·&nbsp; Klick auf die Leiste springt dorthin, Mausrad zoomt
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <span>Bereich entfernen von</span><input type="text" id="from" placeholder="0:00:00">
+      <button id="setFrom" title="Taste I">Aktuelle Stelle (I)</button>
+      <span>bis</span><input type="text" id="to" placeholder="0:00:00">
+      <button id="setTo" title="Taste O">Aktuelle Stelle (O)</button>
+      <button class="add" id="add">Bereich entfernen</button>
+      <button id="addKeep" title="Ein Stück, das die Automatik entfernt hätte, bleibt im Video">Bereich behalten</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="clearManual">Meine Entfernungen löschen</button>
+      <button id="keepAll">Alle automatischen drin lassen</button>
+      <button id="clearKeep">Behalten-Liste leeren</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><input type="checkbox" id="skip" checked> Entfernte Bereiche beim Abspielen überspringen</label>
+      <span class="dim">Springen: <kbd>←</kbd> <kbd>→</kbd> 5 s, <kbd>Umschalt</kbd>+Pfeil 30 s, <kbd>Leertaste</kbd> Abspielen, <kbd>N</kbd>/<kbd>B</kbd> nächste/vorige Stelle, <kbd>+</kbd>/<kbd>−</kbd> Zoom</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="panel"><strong>Von dir entfernt</strong><ul id="manual"></ul><div class="dim" id="noman">Noch nichts markiert.</div></div>
+    <div class="panel"><strong>Von dir behalten</strong> <span class="dim">(trotz Automatik)</span><ul id="keep"></ul><div class="dim" id="nokeep">Nichts. Bei „Automatisch entfernt“ geht das mit „Drin lassen“.</div></div>
+    <div class="panel"><strong>Automatisch entfernt</strong><ul id="auto"></ul></div>
+  </div>
+
+  <div class="panel row" style="justify-content:space-between">
+    <div><div id="sum"></div><div id="missionInfo" class="dim"></div><div id="msg" class="dim"></div></div>
+    <button class="primary" id="ok">Bestätigen und weiter</button>
+  </div>
+</main>
+<script>
+const token = new URLSearchParams(location.search).get("token");
+const api = (p, body) => fetch(p + "?token=" + token, body === undefined ? {} :
+  {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}).then(r => r.json());
+const $ = id => document.getElementById(id);
+let state = null, cur = 0, started = {}, mode = {}, polling = false, draft = {from: null, to: null}, saveTimer = null;
+// Ausschnitt der Zeitleiste pro Aufnahme: view[i] = [von, bis] in Sekunden (leer = ganze Aufnahme)
+const view = {}, initial = {}, used = {};
+const MIN_SPAN = 20;
+
+const fmt = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h + ":" + String(m).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
+// Eingabe "1:21:00", "81:00" oder "4860" -> Sekunden; leer oder ungültig -> null
+const parse = t => { t = t.trim(); if (!t) return null; const p = t.split(":").map(Number);
+  if (p.some(x => !isFinite(x) || x < 0) || p.length > 3) return null;
+  return p.reduce((a, x) => a * 60 + x, 0); };
+const file = () => state.files[cur];
+
+async function load() {
+  state = await api("/api/state");
+  if (state.confirmed) return done();
+  render(); setupPlayback();
+}
+const src = kind => "/" + kind + "/" + cur + "?token=" + token;
+const setWait = (html) => { $("wait").innerHTML = html; };
+
+// Kann der Browser das Original abspielen? Echter Test: kurz stumm abspielen und prüfen, ob Bilder ankommen.
+function testDirect() {
+  const v = $("v");
+  return new Promise(resolve => {
+    let done = false;
+    const finish = ok => { if (!done) { done = true; v.onerror = null; v.onloadedmetadata = null; resolve(ok); } };
+    v.muted = true; v.src = src("original");
+    v.onerror = () => finish(false);
+    v.onloadedmetadata = () => v.play().then(() => setTimeout(() => {
+      const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+      v.pause(); finish(!v.error && v.videoWidth > 0 && !!q && q.totalVideoFrames > 2);
+    }, 1500)).catch(() => finish(false));
+    setTimeout(() => finish(false), 15000);
+  });
+}
+
+async function setupPlayback() {
+  const i = cur;
+  if (started[i]) { applyMode(); return; }
+  started[i] = true;
+  const first = file().mission_start || cutPoints()[0];  // am Missionsbeginn, sonst an der ersten Stelle
+  if (first !== undefined) initial[i] = Math.max(0, first - RUNUP);  // das Fenster beginnt an der ersten Stelle, nicht bei 0:00
+  setWait("Prüfe, ob das Original direkt abgespielt werden kann …");
+  const ok = await testDirect();
+  mode[i] = ok ? "direct" : "proxy";
+  if (!ok) await api("/api/proxy", {});  // Original nicht abspielbar: Proxy erzeugen lassen
+  if (cur === i) applyMode();
+  poll();
+}
+
+// Je nach Weg: Original (stumm) plus Mix-Ton, oder Proxy mit eingebautem Ton
+function applyMode() {
+  const f = file(), v = $("v"), a = $("a"), m = mode[cur];
+  if (!m) return;
+  let t = v.currentTime || 0;
+  const wasPlaying = !v.paused;
+  if (initial[cur] !== undefined && !used[cur] && (m === "direct" || f.proxy)) {
+    t = initial[cur]; used[cur] = true;  // einmal: Start an der ersten automatisch entfernten Stelle
+    if (m === "direct") { v.currentTime = t; follow(t); }
+  }
+  if (m === "direct") {
+    if (!v.src.includes("/original/" + cur + "?")) { v.muted = true; v.src = src("original"); v.currentTime = t; }
+    if (f.audio && !a.src.includes("/audio/" + cur + "?")) { a.src = src("audio"); a.currentTime = t; }
+    setWait(state.error ? '<span class="err">Ton fehlgeschlagen: ' + state.error + "</span>"
+      : f.audio ? "" : "Original läuft ohne Ton. Mix-Ton wird vorbereitet … " + Math.round(f.audio_progress * 100) + " %");
+  } else {
+    a.removeAttribute("src");
+    if (f.proxy && !v.src.includes("/proxy/" + cur + "?")) { v.muted = false; v.src = src("proxy"); v.currentTime = t; follow(t); }
+    setWait(state.error ? '<span class="err">Vorschau fehlgeschlagen: ' + state.error + "</span>"
+      : f.proxy ? "" : "Das Original lässt sich im Browser nicht abspielen. Vorschau wird erzeugt … " + Math.round(f.progress * 100) + " %");
+  }
+  applyVolume();
+  if (wasPlaying) v.play().catch(() => {});
+}
+function applyVolume() {
+  const vol = Number($("vol").value);
+  if (mode[cur] === "direct") $("a").volume = vol; else $("v").volume = vol;
+}
+// Fortschritt abfragen, solange etwas fehlt
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try {
+    while (true) {
+      const s = await api("/api/state");
+      state.error = s.error;
+      s.files.forEach((x, i) => { Object.assign(state.files[i], {proxy: x.proxy, progress: x.progress, audio: x.audio, audio_progress: x.audio_progress}); });
+      applyMode();
+      const f = file();
+      if (state.error || (mode[cur] === "direct" ? f.audio : f.proxy)) break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } finally { polling = false; }
+}
+// Bereiche, die behalten werden, aus den automatischen Entfernungen herausschneiden (wie plan_review.subtract im Kern)
+const subtract = (items, keeps) => {
+  let out = items.map(r => ({...r}));
+  for (const k of keeps) {
+    const next = [];
+    for (const r of out) {
+      if (k.end <= r.start || k.start >= r.end) { next.push(r); continue; }
+      if (k.start > r.start) next.push({...r, end: k.start});
+      if (k.end < r.end) next.push({...r, start: k.end});
+    }
+    out = next;
+  }
+  return out.filter(r => r.end - r.start > 0.05);
+};
+const effectiveAuto = () => subtract(file().auto, file().keep);
+// Missionsbeginn (Datei <Aufnahme>.start.txt): alles davor schneidet das Rendern ab, hier nur zur Orientierung
+const missionCut = () => file().mission_start ? [{start: 0, end: file().mission_start}] : [];
+
+const viewOf = () => view[cur] || [0, file().duration];
+const pos = t => { const [a, b] = viewOf(); return (t - a) / (b - a) * 100; };
+function setView(a, b) {
+  const d = file().duration;
+  const span = Math.min(d, Math.max(MIN_SPAN, b - a));
+  a = Math.min(Math.max(0, a), d - span);
+  view[cur] = span >= d - 0.5 ? null : [a, a + span];
+  render(); placeHead();
+}
+// Heranzoomen (factor < 1) oder Herauszoomen (factor > 1) um die Stelle `around` herum
+function zoom(factor, around) {
+  const [a, b] = viewOf(), at = around === undefined ? $("v").currentTime : around;
+  const rel = (at - a) / (b - a), span = (b - a) * factor;
+  setView(at - rel * span, at - rel * span + span);
+}
+function pan(frac) { const [a, b] = viewOf(); setView(a + (b - a) * frac, b + (b - a) * frac); }
+// Folgt der Abspielposition: verlässt sie den Ausschnitt, wandert er mit
+function follow(t) {
+  const v = view[cur]; if (!v || (t >= v[0] && t <= v[1])) return;
+  const span = v[1] - v[0]; setView(t - span * 0.1, t - span * 0.1 + span);
+}
+function placeHead() {
+  const t = $("v").currentTime, p = pos(t);
+  $("head").style.left = p + "%"; $("head").style.display = p < 0 || p > 100 ? "none" : "";
+}
+// Stellen, an denen etwas entfernt wurde (Beginn jedes entfernten Bereichs), zeitlich sortiert
+const cutPoints = () => [...effectiveAuto(), ...file().manual].map(r => r.start).sort((x, y) => x - y);
+const RUNUP = 3;  // so viele Sekunden vor der Stelle beginnt man zu schauen
+function jumpCut(dir) {
+  const t = $("v").currentTime, cuts = cutPoints();
+  const target = dir > 0 ? cuts.find(c => c - RUNUP > t + 0.5) : [...cuts].reverse().find(c => c - RUNUP < t - 1.5);
+  if (target === undefined) { $("msg").textContent = dir > 0 ? "Keine weitere Stelle." : "Keine frühere Stelle."; return; }
+  seek(Math.max(0, target - RUNUP)); follow($("v").currentTime);
+}
+
+function render() {
+  $("sub").textContent = file().name + " · " + fmt(file().duration);
+  $("tabs").innerHTML = "";
+  if (state.files.length > 1) state.files.forEach((f, i) => { const b = document.createElement("button");
+    b.textContent = "Aufnahme " + (i + 1); b.className = i === cur ? "on" : ""; b.onclick = () => { cur = i; render(); setupPlayback(); poll(); };
+    $("tabs").appendChild(b); });
+  const bar = $("bar"), d = file().duration, [va, vb] = viewOf();
+  bar.querySelectorAll(".seg").forEach(e => e.remove());
+  const seg = (a, b, cls) => { if (b < va || a > vb) return; const e = document.createElement("div"); e.className = "seg " + cls;
+    e.style.left = pos(a) + "%"; e.style.width = (b - a) / (vb - va) * 100 + "%"; bar.appendChild(e); };
+  $("t0").textContent = fmt(va); $("t1").textContent = fmt((va + vb) / 2); $("t2").textContent = fmt(vb);
+  $("zoomInfo").textContent = view[cur] ? "Ausschnitt " + fmt(vb - va) + " von " + fmt(d) : "ganze Aufnahme";
+  missionCut().forEach(r => seg(r.start, r.end, "mission"));
+  effectiveAuto().forEach(r => seg(r.start, r.end, "auto")); file().manual.forEach(r => seg(r.start, r.end, "man"));
+  file().keep.forEach(r => seg(r.start, r.end, "keep"));
+  if (draft.from !== null && draft.to !== null && draft.to > draft.from) seg(draft.from, draft.to, "draft");
+  list("manual", file().manual, true); list("keep", file().keep, "keep"); list("auto", file().auto, false);
+  $("noman").style.display = file().manual.length ? "none" : "";
+  $("nokeep").style.display = file().keep.length ? "none" : "";
+  const removed = [...missionCut(), ...effectiveAuto(), ...file().manual].sort((a, b) => a.start - b.start);
+  $("missionInfo").textContent = file().mission_start ? "Missionsbeginn bei " + fmt(file().mission_start) + " (aus deinem Eintrag): alles davor wird beim Rendern abgeschnitten." : "";
+  let cut = 0, end = -1;
+  removed.forEach(r => { const s = Math.max(r.start, end); if (r.end > s) cut += r.end - s; end = Math.max(end, r.end); });
+  $("sum").innerHTML = "Übrig bleiben <strong>" + fmt(d - cut) + "</strong> von " + fmt(d) + " (entfernt: " + fmt(cut)
+    + ", davon von dir: " + fmt(file().manual.reduce((a, r) => a + r.end - r.start, 0)) + ")";
+}
+function list(id, items, kind) {
+  const ul = $(id); ul.innerHTML = "";
+  items.forEach((r, i) => { const li = document.createElement("li");
+    const kept = id === "auto" && subtract([r], file().keep).length === 0;  // vom Nutzer ganz behalten
+    li.innerHTML = '<span class="t"' + (kept ? ' style="text-decoration:line-through;opacity:.6"' : "") + ">" + fmt(r.start) + " – " + fmt(r.end) + "</span>"
+      + (r.label && id === "auto" ? '<span class="tag">' + r.label + "</span>" : "")
+      + (kept ? '<span class="tag">bleibt drin</span>' : "");
+    const btn = (text, fn) => { const b = document.createElement("button"); b.textContent = text; b.onclick = fn; li.appendChild(b); };
+    btn("Hin", () => seek(Math.max(0, r.start - 3)));
+    if (kind === true) btn("Löschen", () => { file().manual.splice(i, 1); changed(); });
+    if (kind === "keep") btn("Löschen", () => { file().keep.splice(i, 1); changed(); });
+    if (id === "auto") {
+      if (kept) btn("Wieder entfernen", () => { file().keep = file().keep.filter(k => k.end <= r.start || k.start >= r.end); changed(); });
+      else btn("Drin lassen", () => { file().keep.push({start: r.start, end: r.end}); changed(); });
+    }
+    ul.appendChild(li); });
+}
+function seek(t) { $("v").currentTime = Math.min(Math.max(0, t), file().duration); }
+function changed() { render(); clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); }
+const payload = () => ({files: state.files.map(f => f.manual), keep: state.files.map(f => f.keep)});
+async function save() {
+  const r = await api("/api/manual", payload());
+  if (r.error) $("msg").innerHTML = '<span class="err">' + r.error + "</span>";
+  else { r.files.forEach((m, i) => { state.files[i].manual = m; state.files[i].keep = r.keep[i]; }); $("msg").textContent = "Gespeichert."; render(); }
+}
+$("setFrom").onclick = () => { draft.from = $("v").currentTime; $("from").value = fmt(draft.from); render(); };
+$("setTo").onclick = () => { draft.to = $("v").currentTime; $("to").value = fmt(draft.to); render(); };
+$("from").oninput = () => { draft.from = parse($("from").value); render(); };
+$("to").oninput = () => { draft.to = parse($("to").value); render(); };
+$("add").onclick = () => {
+  const a = parse($("from").value), b = parse($("to").value);
+  if (a === null || b === null || a === b) { $("msg").innerHTML = '<span class="err">Bitte Anfang und Ende als h:mm:ss angeben.</span>'; return; }
+  file().manual.push({start: Math.min(a, b), end: Math.min(Math.max(a, b), file().duration)});
+  draft = {from: null, to: null}; $("from").value = $("to").value = ""; changed();
+};
+$("clearManual").onclick = () => {
+  const n = file().manual.length;
+  if (!n) { $("msg").textContent = "Du hast noch nichts entfernt."; return; }
+  if (confirm(n === 1 ? "Deine Entfernung löschen?" : "Alle " + n + " Entfernungen von dir löschen?")) { file().manual = []; changed(); }
+};
+$("keepAll").onclick = () => {
+  const missing = file().auto.filter(r => subtract([r], file().keep).length > 0);
+  if (!missing.length) { $("msg").textContent = "Alle automatischen Bereiche bleiben schon drin."; return; }
+  if (confirm("Alle " + missing.length + " automatisch entfernten Bereiche drin lassen?")) { missing.forEach(r => file().keep.push({start: r.start, end: r.end})); changed(); }
+};
+$("clearKeep").onclick = () => {
+  const n = file().keep.length;
+  if (!n) { $("msg").textContent = "Die Behalten-Liste ist schon leer."; return; }
+  if (confirm("Alle " + n + " behaltenen Bereiche wieder dem automatischen Plan überlassen?")) { file().keep = []; changed(); }
+};
+$("addKeep").onclick = () => {
+  const a = parse($("from").value), b = parse($("to").value);
+  if (a === null || b === null || a === b) { $("msg").innerHTML = '<span class="err">Bitte Anfang und Ende als h:mm:ss angeben.</span>'; return; }
+  file().keep.push({start: Math.min(a, b), end: Math.min(Math.max(a, b), file().duration)});
+  draft = {from: null, to: null}; $("from").value = $("to").value = ""; changed();
+};
+const timeAt = e => { const b = $("bar").getBoundingClientRect(), [a, c] = viewOf(); return a + (e.clientX - b.left) / b.width * (c - a); };
+$("bar").onclick = e => seek(timeAt(e));
+$("bar").addEventListener("wheel", e => {
+  e.preventDefault();
+  if (e.shiftKey) pan(e.deltaY > 0 ? 0.25 : -0.25); else zoom(e.deltaY > 0 ? 1.4 : 1 / 1.4, timeAt(e));
+}, {passive: false});
+$("zin").onclick = () => zoom(0.5); $("zout").onclick = () => zoom(2);
+$("zall").onclick = () => setView(0, file().duration);
+$("pl").onclick = () => pan(-0.5); $("pr").onclick = () => pan(0.5);
+$("prevCut").onclick = () => jumpCut(-1); $("nextCut").onclick = () => jumpCut(1);
+// Original läuft stumm, der Mix-Ton als eigene Datei daneben: Ton folgt dem Bild (Abspielen, Pause, Springen, Tempo)
+const audioActive = () => mode[cur] === "direct" && file().audio && $("a").src;
+$("v").ontimeupdate = () => {
+  const v = $("v"), t = v.currentTime; if (!v.paused) follow(t); placeHead();
+  if (audioActive() && !v.paused && Math.abs($("a").currentTime - t) > 0.3) $("a").currentTime = t;
+  if (!$("skip").checked || v.paused) return;
+  const hit = [...missionCut(), ...effectiveAuto(), ...file().manual].find(r => t >= r.start && t < r.end - 0.05);
+  if (hit) seek(hit.end);
+};
+$("v").onseeked = () => { placeHead(); if (audioActive()) $("a").currentTime = $("v").currentTime; };
+$("v").onplay = () => { if (audioActive()) { $("a").currentTime = $("v").currentTime; $("a").play().catch(() => {}); } };
+$("v").onpause = () => { if (audioActive()) $("a").pause(); };
+$("v").onwaiting = () => { if (audioActive()) $("a").pause(); };
+$("v").onplaying = () => { if (audioActive()) { $("a").currentTime = $("v").currentTime; $("a").play().catch(() => {}); } };
+$("v").onratechange = () => { if (audioActive()) $("a").playbackRate = $("v").playbackRate; };
+$("vol").oninput = applyVolume;
+// Eigene Bedienung statt der Edge-Leiste (die bringt Bild in Bild, Download, Verbessern usw. mit)
+const togglePlay = () => { const v = $("v"); if (v.paused) v.play().catch(() => {}); else v.pause(); };
+$("stage").onclick = togglePlay;
+$("stage").oncontextmenu = e => e.preventDefault();
+$("pp").onclick = togglePlay;
+$("back").onclick = () => seek($("v").currentTime - 5);
+$("fwd").onclick = () => seek($("v").currentTime + 5);
+$("rate").onchange = () => { $("v").playbackRate = Number($("rate").value); };
+const clock = () => { $("time").textContent = fmt($("v").currentTime) + " / " + fmt(file().duration); };
+$("v").addEventListener("timeupdate", clock);
+$("v").addEventListener("seeked", clock);
+$("v").addEventListener("play", () => { $("pp").textContent = "⏸ Pause"; });
+$("v").addEventListener("pause", () => { $("pp").textContent = "▶ Abspielen"; });
+// Im direkten Weg läuft das Original stumm (sein erster Ton ist nur das Mikrofon); gehört wird der Mix-Ton
+$("v").addEventListener("volumechange", () => { if (mode[cur] === "direct" && !$("v").muted) $("v").muted = true; });
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type === "text") return;
+  const v = $("v");
+  if (e.key === " ") { e.preventDefault(); togglePlay(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); seek(v.currentTime - (e.shiftKey ? 30 : 5)); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); seek(v.currentTime + (e.shiftKey ? 30 : 5)); }
+  else if (e.key.toLowerCase() === "n") jumpCut(1);
+  else if (e.key.toLowerCase() === "b") jumpCut(-1);
+  else if (e.key === "+" || e.key === "=") zoom(0.5);
+  else if (e.key === "-") zoom(2);
+  else if (e.key === "0") $("zall").click();
+  else if (e.key.toLowerCase() === "i") $("setFrom").click();
+  else if (e.key.toLowerCase() === "o") $("setTo").click();
+});
+$("ok").onclick = async () => {
+  clearTimeout(saveTimer); $("ok").disabled = true;
+  const r = await api("/api/confirm", payload());
+  if (r.error) { $("msg").innerHTML = '<span class="err">' + r.error + "</span>"; $("ok").disabled = false; } else done();
+};
+function done() {
+  document.querySelector("main").innerHTML = '<div class="panel"><h1>Bestätigt</h1><p>Der Auftrag läuft jetzt weiter. Du kannst dieses Fenster schließen.</p></div>';
+  setTimeout(() => window.close(), 1500);
+}
+// Lebenszeichen: der Server beendet sich, wenn die Seite eine Weile nichts mehr von sich hören lässt
+setInterval(() => fetch("/api/ping?token=" + token).catch(() => {}), 5000);
+load();
+</script>
+</body>
+</html>

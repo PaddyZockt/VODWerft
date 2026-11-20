@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import costs, episodes, export_xmeml, metadata, segments, signals, summary, tracks
+from . import costs, episodes, export_xmeml, metadata, plan_review, segments, signals, summary, tracks
 from .media import extract_audio_tracks, keyframe_scan, load_pcm, probe
 from .pipeline import Run, console
 from .render import render_clip
@@ -25,7 +25,8 @@ FULL_FRAME = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
 
 class LetsPlayRun(Run):
     def __init__(self, sources: list[Path], cfg: dict, force: set[str] | None = None, name: str | None = None):
-        super().__init__(sources[0], cfg, force, name=name or f"{sources[0].stem}_letsplay")
+        super().__init__(sources[0], cfg, force, name=name or f"{sources[0].stem}_letsplay",
+                         sources=sources, mode="letsplay")
         self.sources = sources
 
     def run(self) -> list[Path]:
@@ -78,7 +79,10 @@ class LetsPlayRun(Run):
                 f = cache / f"{n:02d}" / "scan.npz"
                 if not f.exists():
                     console.print(f"  picture {n + 1}/{len(infos)}: {info.path.name}")
-                    np.savez(f, **keyframe_scan(info.path, layout["gameplay"], info.width, info.height, mask))
+                    # progress: "  scan 35/100" lines (the status of the dashboard / status card shows "(35 von 100)")
+                    np.savez(f, **keyframe_scan(info.path, layout["gameplay"], info.width, info.height, mask,
+                                                duration=info.duration,
+                                                progress=lambda pct: console.print(f"  scan {pct}/100")))
                 out.append(str(f))
             return out
         scan_paths = self._stage("scan", do_scan)
@@ -130,6 +134,24 @@ class LetsPlayRun(Run):
                               "kept": segments.kept_pieces(info.duration, removals)})
             return files
         cuts = self._stage("cuts", do_cuts)
+        review = bool(lcfg.get("review_plan"))  # Option "Plan prüfen": aus = Verhalten wie bisher, nichts davon läuft
+        durations = [i.duration for i in infos]
+        if review:
+            if plan_review.needs_review(cfg, self.work):
+                # Anhalten: der Nutzer markiert und bestätigt; danach läuft derselbe Auftrag weiter
+                plan_review.write_review_state(self.work, [{"source": str(i.path), "duration": i.duration} for i in infos])
+                console.print("[bold yellow]Plan prüfen:[/bold yellow] Der Lauf hält hier an, bis der Plan bestätigt ist.")
+                raise SystemExit(plan_review.PENDING_EXIT_CODE)
+            manual = plan_review.read_manual(self.work, len(infos))
+            keep = plan_review.read_keep(self.work, len(infos))
+            manual_sig = plan_review.signature(manual, durations, keep)
+            try:
+                applied = plan_review.applied_path(self.work).read_text(encoding="utf-8")
+            except OSError:
+                applied = None
+            if manual_sig != applied:
+                self._dirty = True  # Plan geändert: Folgen, Export und Metadaten neu berechnen, nicht aus dem Zwischenspeicher
+            cuts = plan_review.apply_manual(cuts, manual, durations, keep)
         removed = sum(r["end"] - r["start"] for f in cuts for r in f["removals"])
         console.print(f"  removed {removed / 60:.1f} min of {total_src / 60:.0f} min")
 
@@ -190,6 +212,8 @@ class LetsPlayRun(Run):
             meta = self._stage("metadata", do_metadata)
 
         self._write_lp_report(infos, cuts, eps, meta)
+        if review:
+            plan_review.applied_path(self.work).write_text(manual_sig, encoding="utf-8")  # erst jetzt: alles war erfolgreich
         return [Path(x) for x in xmls]
 
     def _write_lp_report(self, infos, cuts, eps, meta) -> None:

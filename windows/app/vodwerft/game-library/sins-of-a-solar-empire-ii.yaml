@@ -3,3 +3,8 @@ developer: Ironclad Games / Stardock Entertainment
 game_type: other
 keywords: {}
 vision_hints: "German-language Sins of a Solar Empire II gameplay. Fleet orders, research, empire management, tactical map views and battles are gameplay. Distinguish these from loading screens and breaks."
+
+# Clip-Richter: Was ein guter Short in diesem Spiel ist (freier Text, wird dem lokalen Modell als Maßstab gegeben)
+judge:
+  criteria: >-
+    Sins of a Solar Empire II is a space strategy game. A good Short has a big battle moment: an ambush, a fleet wiped out, a dramatic last stand or comeback, a plan that fails in a funny way, or a clear reaction to a surprise. Reject: menus, research and build queues, long planning, pauses, greetings and goodbyes.

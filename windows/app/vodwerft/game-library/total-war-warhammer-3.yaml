@@ -20,3 +20,8 @@ vision_hints: |
   The game is mostly calm in the campaign and loud in battles; battle climaxes
   (first contact, a decisive charge, a siege breach, the last unit standing) are the
   strongest cut candidates.
+
+# Clip-Richter: Was ein guter Short in diesem Spiel ist (freier Text, wird dem lokalen Modell als Maßstab gegeben)
+judge:
+  criteria: >-
+    Total War Warhammer III: a good Short has a battle moment such as a charge, a hero duel, a big monster, a rout, a funny commander mistake or a last-second win, together with a clear reaction. Reject: campaign map administration, menus, army setup, long deployment talk, greetings and goodbyes.

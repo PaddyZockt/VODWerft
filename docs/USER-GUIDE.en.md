@@ -92,6 +92,16 @@ You do this once, yourself; VODWerft never asks for your Google password.
 
 Drop recordings into the game's folder; the watcher waits until files are complete and processes them in file-name order. The tray icon shows the status; double-click opens the dashboard. Files the server cannot upload end up in `Pruefen`. For logs open the data folder and read `production\watcher.log`. 
 
+### More features
+
+- **Review the plan (optional):** switch it on under *Settings → Cut* or per game profile. The job stops after the analysis ("Wartet auf dich"). "Plan prüfen öffnen" shows what was removed automatically; remove more ranges or keep some, then confirm. Rendering starts only after that.
+- **YouTube details per game:** *Game profiles → YouTube*: playlist, fixed tags and collab partners. The playlist needs an extra permission: tick "Auch Playlists zuordnen" when you sign in in the setup assistant. If you are already set up, sign in once more: open a command prompt in the program folder (`C:\Program Files\VODWerft`) and run `venv\Scripts\python.exe vodwerft\youtube_login.py "%LOCALAPPDATA%\VODWerft\uploader\secrets" --playlists`, then confirm in the browser (in server mode do the same in the folder holding `client_secrets.json`). Inviting a collab partner and the game title can only be set in YouTube Studio; the job details remind you.
+- **Use of AI:** YouTube asks for every video whether AI created or changed content. VODWerft does not declare anything by default, so you answer it in Studio. *Settings → YouTube* can send "No" with every upload.
+- **Transitions at cuts:** *Settings* or game profile: hard (default), fade, blur, white flash, zoom, pixelate. The episode length stays the same.
+- **Stop a job and remaining time:** the "Auftrag stoppen" button in the job list ends a running job; "Verlauf → Export erneut versuchen" continues it. Steps with a counter show "noch etwa 12 Min." in the job details.
+- **Library (server mode):** next to `Fertig` a folder `Bibliothek\<game>` holds a link per uploaded episode (double-click opens the video on YouTube).
+- **Notifications and disk space:** Windows tells you when a job waits for you or is finished (*Settings → Appearance* switches it off). If the work drive is too full, the dashboard and the job history warn you.
+
 ## Common problems
 
 | Problem | Fix |
@@ -106,4 +116,4 @@ Drop recordings into the game's folder; the watcher waits until files are comple
 
 ## Update
 
-Run the new `VODWerft-Setup.exe` over the existing installation. Your setup and data are kept. Quit VODWerft first via the tray menu ("Beenden").
+VODWerft checks GitHub for a newer version at start and every six hours. When there is one, the dashboard shows "Update available". One click shows what is new first; only "Install now" downloads and installs (the checksum is verified). If a job is running, the update can wait for it. You can also run the installer by hand: run the new `VODWerft-Setup.exe` over the existing installation. Your setup and data are kept. Quit VODWerft first via the tray menu ("Beenden").

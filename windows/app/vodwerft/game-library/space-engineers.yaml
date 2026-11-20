@@ -3,3 +3,11 @@ developer: Keen Software House
 game_type: other
 keywords: {}
 vision_hints: "German-language Space Engineers gameplay. Distinguish construction, ship flight, combat and exploration from loading screens, menus and AFK."
+# Clip-Richter: Was ein guter Short in diesem Spiel ist (freier Text, wird dem lokalen Modell als Maßstab gegeben)
+judge:
+  criteria: >-
+    Space Engineers is a calm building and engineering game, so a good Short needs a clear payoff:
+    a mishap (collision, explosion, shooting oneself, crash, wrong button), a surprise (unexpected event,
+    message or action of a co-player), a success after visible effort, or a funny exchange with co-players.
+    Reject: inventory and menus, explanations of building or technology, planning, microphone or audio
+    problems, talk without any event, greetings and goodbyes.

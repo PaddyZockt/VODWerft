@@ -3,3 +3,8 @@ developer: Urban Games
 game_type: other
 keywords: {}
 vision_hints: "German-language Transport Fever 3 gameplay. Route and station construction, timetables, network planning and vehicle views are gameplay, including when the simulation is paused. Distinguish these from loading screens and breaks."
+
+# Clip-Richter: Was ein guter Short in diesem Spiel ist (freier Text, wird dem lokalen Modell als Maßstab gegeben)
+judge:
+  criteria: >-
+    Transport Fever 3 is a calm transport and economy builder, so a good Short needs a payoff: a crash or derailment, a funny mistake (wrong track, stuck train, missing road), a satisfying result (a line works for the first time, a big payout), a surprise or a funny comment. Reject: menus, line and timetable planning, price talk without an event, greetings and goodbyes.

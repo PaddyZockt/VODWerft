@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 from difflib import SequenceMatcher
@@ -14,9 +15,12 @@ from pathlib import Path
 import yaml
 
 from bundle import enqueue, job_name, read_metadata, thumbnail_for
-from export_episode import ENCODERS, render
+from export_episode import ENCODERS, TRANSITIONS, render
 from obs_audio import OBS_TRACKS, split_audio
+from plan_status import PENDING_EXIT_CODE
+from proxy import remove_proxies
 from series_numbers import save_episode_count, start_batch
+from youtube_fields import shift_chapters, trim_offset
 
 
 def title_words(value, series):
@@ -102,6 +106,12 @@ def main():
     parser.add_argument("--thumbnail-theme", help="Thumbnail-Stil als JSON (Farben, Schrift); leer = Vorgaben")
     parser.add_argument("--description-template", type=Path)
     parser.add_argument("--mission", help="Fixed mission name for a one-video recording")
+    parser.add_argument("--transition", choices=TRANSITIONS, default="hart",
+                        help="Übergang an den Schnitten innerhalb einer Folge (Standard: hart)")
+    parser.add_argument("--no-chapters", action="store_true",
+                        help="Im Missionsmodus keine Kapitel und keine KI-Metadaten erzeugen")
+    parser.add_argument("--review-plan", action="store_true",
+                        help="Nach der Analyse anhalten, damit der Schnittplan von Hand geprüft werden kann")
     args = parser.parse_args()
     if (not job_name.fullmatch(args.job_name) or len(args.job_name) > 105
             or (args.first_episode is not None and args.first_episode < 1)):
@@ -152,6 +162,15 @@ def main():
         raise ValueError("The existing output belongs to a different batch")
     identity_path.write_text(identity, encoding="utf-8")
     source_config.setdefault("letsplay", {}).update(series_name=args.series, first_episode=first)
+    if args.review_plan:
+        source_config["letsplay"]["review_plan"] = True
+    # Der Auftragsordner ist durch Auftragsschlüssel und batch-identity.json eindeutig und wird von Dashboard,
+    # Plan prüfen und Kalender fest unter <Ausgabe>/nightcut erwartet: Nightcut darf ihn nie umbenennen (_2).
+    source_config["workdir_fixed"] = True
+    if args.mission and not args.no_chapters:
+        # Missionsprofile schalten die KI-Metadaten ab (Titel und Beschreibung stehen fest). Kapitel und Tags
+        # braucht auch eine Mission; Titel und Beschreibung ersetzt der Watcher danach ohnehin.
+        source_config.setdefault("metadata", {})["enabled"] = True
     source_config.setdefault("audio", {})["mic"] = {"title": None, "index": args.audio_track}
     if use_stems:
         source_config["audio"].update({
@@ -162,11 +181,16 @@ def main():
     effective_config = output / "nightcut-effective.yaml"
     effective_config.write_text(yaml.safe_dump(source_config, allow_unicode=True), encoding="utf-8")
     environment = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-    subprocess.run([
+    result = subprocess.run([
         sys.executable, "-B", "-u", "-c", "from nightcut.cli import app; app()", "run",
         *map(str, sources), "--mode", "letsplay", "--profile", profile,
         "--config", str(effective_config), "--output", str(output), "--name", "nightcut",
-    ], env=environment, check=True, timeout=NIGHTCUT_TIMEOUT)
+    ], env=environment, timeout=NIGHTCUT_TIMEOUT)
+    if result.returncode == PENDING_EXIT_CODE and args.review_plan:
+        # Kein Fehler: Der Plan wartet auf die Prüfung. Der Watcher erkennt den Code und lässt den Auftrag stehen.
+        print("Plan prüfen: Der Auftrag wartet auf die Bestätigung des Schnittplans.", flush=True)
+        sys.exit(PENDING_EXIT_CODE)
+    result.check_returncode()
     work = output / "nightcut"
     manifest = work / "episodes.json"
     episodes = json.loads(manifest.read_text(encoding="utf-8"))
@@ -186,6 +210,10 @@ def main():
         video = output / (stem + ".mp4")
         sidecar = output / (stem + ".json")
         draft = drafts[index] if drafts else {}
+        if args.trim_start and draft.get("chapters"):
+            # Das Rendern schneidet alles vor dem Missionsbeginn ab: Die Kapitelzeiten verschieben sich entsprechend
+            offset = trim_offset(episode["pieces"], args.trim_start)
+            draft = {**draft, "chapters": shift_chapters(draft["chapters"], offset, episode["length"] - offset)}
         data = upload_metadata(draft, args.series, number, template, recent_titles=recent_titles)
         if args.mission:
             data["title"] = f"{args.series} | {args.mission}"[:100]
@@ -195,7 +223,7 @@ def main():
         recent_titles.append(read_metadata(sidecar)["title"])
         if not video.exists():
             render(manifest, episode["n"], sources, args.audio_track, video, args.encoder, args.trim_start,
-                   mix_tracks=OBS_TRACKS if use_stems else ())
+                   mix_tracks=OBS_TRACKS if use_stems else (), transition=args.transition)
         cover = thumbnail_for(args.thumbnail_dir / video.name) if args.thumbnail_dir else None
         if args.auto_thumbnail and cover is None:
             from thumbnail import make_thumbnail
@@ -218,6 +246,10 @@ def main():
             with stamp.open("x", encoding="utf-8") as handle:
                 handle.write(str(incoming))
             print(enqueue(video, sidecar, incoming, thumbnail=cover), flush=True)
+
+    # Alle Folgen sind gerendert: die Vorschau-Proxys (Plan prüfen) werden nicht mehr gebraucht
+    remove_proxies(work)
+    shutil.rmtree(work / "browser-profile", ignore_errors=True)
 
 
 if __name__ == "__main__":
